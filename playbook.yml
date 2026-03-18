@@ -1,0 +1,26 @@
+---
+- name: Configure VPS Ubuntu
+  hosts: vps
+  become: true
+
+  roles:
+    - role: setup
+      tags: [setup]
+
+    - role: traefik
+      tags: [traefik]
+
+    - role: portainer
+      tags: [portainer]
+
+    - role: postgres
+      tags: [postgres]
+
+    - role: adminer
+      tags: [adminer]
+
+    - role: minio
+      tags: [minio]
+
+    - role: dozzle
+      tags: [dozzle]

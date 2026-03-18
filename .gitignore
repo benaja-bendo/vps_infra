@@ -1,0 +1,23 @@
+# Ansible
+*.retry
+inventory.ini
+group_vars/vps.yml
+*.env
+.vault_pass
+
+# Environnement virtuel Python
+venv/
+.venv/
+env/
+
+# Caches Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# Caches Ansible & Lint
+.ansible/
+.cache/
+.ansible-lint/

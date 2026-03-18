@@ -1,0 +1,20 @@
+---
+- name: Créer le dossier pour Adminer
+  ansible.builtin.file:
+    path: /opt/docker/adminer
+    state: directory
+    mode: '0755'
+    owner: "{{ ansible_user | default('root') }}"
+    group: docker
+
+- name: Copier le fichier docker-compose pour Adminer
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: /opt/docker/adminer/docker-compose.yml
+    mode: '0644'
+
+- name: Démarrer Adminer
+  community.docker.docker_compose_v2:
+    project_src: /opt/docker/adminer
+    state: present
+    pull: missing

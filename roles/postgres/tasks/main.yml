@@ -1,0 +1,31 @@
+---
+- name: Créer le réseau Docker interne 'db_internal'
+  community.docker.docker_network:
+    name: db_internal
+    state: present
+
+- name: Créer le dossier pour Postgres
+  ansible.builtin.file:
+    path: /opt/docker/postgres
+    state: directory
+    mode: '0755'
+    owner: "{{ ansible_user | default('root') }}"
+    group: docker
+
+- name: Copier le fichier docker-compose pour Postgres
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: /opt/docker/postgres/docker-compose.yml
+    mode: '0644'
+
+- name: Supprimer l'ancien conteneur Postgres s'il existe (Fix Conflict)
+  community.docker.docker_container:
+    name: postgres
+    state: absent
+    keep_volumes: true
+
+- name: Démarrer Postgres
+  community.docker.docker_compose_v2:
+    project_src: /opt/docker/postgres
+    state: present
+    pull: missing

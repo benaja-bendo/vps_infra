@@ -1,0 +1,28 @@
+---
+- name: Créer le dossier pour Portainer
+  ansible.builtin.file:
+    path: /opt/docker/portainer
+    state: directory
+    mode: '0755'
+    owner: "{{ ansible_user | default('root') }}"
+    group: docker
+
+- name: Créer le fichier de mot de passe admin
+  ansible.builtin.copy:
+    content: "{{ portainer_admin_password }}"
+    dest: /opt/docker/portainer/admin_password
+    mode: '0600'
+    owner: root
+    group: root
+
+- name: Copier le fichier docker-compose pour Portainer
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: /opt/docker/portainer/docker-compose.yml
+    mode: '0644'
+
+- name: Démarrer Portainer
+  community.docker.docker_compose_v2:
+    project_src: /opt/docker/portainer
+    state: present
+    pull: missing

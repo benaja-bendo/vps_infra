@@ -1,0 +1,20 @@
+---
+- name: Créer le dossier pour Dozzle
+  ansible.builtin.file:
+    path: /opt/docker/dozzle
+    state: directory
+    mode: '0755'
+    owner: "{{ ansible_user | default('root') }}"
+    group: docker
+
+- name: Copier le fichier docker-compose pour Dozzle
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: /opt/docker/dozzle/docker-compose.yml
+    mode: '0644'
+
+- name: Démarrer Dozzle
+  community.docker.docker_compose_v2:
+    project_src: /opt/docker/dozzle
+    state: present
+    pull: missing

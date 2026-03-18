@@ -1,0 +1,24 @@
+services:
+  adminer:
+    image: adminer
+    container_name: adminer
+    restart: unless-stopped
+    networks:
+      - proxy
+      - db_internal
+    environment:
+      ADMINER_DEFAULT_SERVER: postgres
+      ADMINER_DESIGN: hydra
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.adminer.rule=Host(`db.{{ domain }}`)"
+      - "traefik.http.routers.adminer.entrypoints=websecure"
+      - "traefik.http.routers.adminer.tls.certresolver=myresolver"
+      - "traefik.http.routers.adminer.middlewares=authtraefik"
+      - "traefik.http.services.adminer.loadbalancer.server.port=8080"
+
+networks:
+  proxy:
+    external: true
+  db_internal:
+    external: true

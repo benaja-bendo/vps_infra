@@ -1,0 +1,20 @@
+---
+- name: Créer le dossier pour MinIO
+  ansible.builtin.file:
+    path: /opt/docker/minio
+    state: directory
+    mode: '0755'
+    owner: "{{ ansible_user | default('root') }}"
+    group: docker
+
+- name: Copier le fichier docker-compose pour MinIO
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: /opt/docker/minio/docker-compose.yml
+    mode: '0644'
+
+- name: Démarrer MinIO
+  community.docker.docker_compose_v2:
+    project_src: /opt/docker/minio
+    state: present
+    pull: missing

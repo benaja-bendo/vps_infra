@@ -1,0 +1,33 @@
+---
+- name: Créer le réseau Docker externe 'proxy'
+  community.docker.docker_network:
+    name: proxy
+    state: present
+
+- name: Créer le dossier pour Traefik
+  ansible.builtin.file:
+    path: /opt/docker/traefik
+    state: directory
+    mode: '0755'
+    owner: "{{ ansible_user }}"
+    group: docker
+
+- name: S'assurer que acme.json existe avec les bons droits (Critique !)
+  ansible.builtin.file:
+    path: /opt/docker/traefik/acme.json
+    state: touch
+    mode: '0600' # Très important pour Traefik
+    modification_time: preserve
+    access_time: preserve
+
+- name: Copier le fichier docker-compose
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: /opt/docker/traefik/docker-compose.yml
+    mode: '0644'
+
+- name: Démarrer Traefik (Docker Compose)
+  community.docker.docker_compose_v2:
+    project_src: /opt/docker/traefik
+    state: present
+    pull: missing

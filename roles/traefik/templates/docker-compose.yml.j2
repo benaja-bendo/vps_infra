@@ -1,0 +1,42 @@
+services:
+  traefik:
+    image: public.ecr.aws/docker/library/traefik:v3.6.8
+    container_name: traefik
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - "80:80"
+      - "443:443"
+    networks:
+      - proxy
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./acme.json:/acme.json
+    command:
+      - "--api.dashboard=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--providers.docker.network=proxy"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entryPoint.scheme=https"
+      - "--certificatesresolvers.myresolver.acme.tlschallenge=true"
+      # Variable Ansible ici :
+      - "--certificatesresolvers.myresolver.acme.email={{ traefik_acme_email }}"
+      - "--certificatesresolvers.myresolver.acme.storage=/acme.json"
+    labels:
+      - "traefik.enable=true"
+      # Variable Ansible pour le domaine :
+      - "traefik.http.routers.dashboard.rule=Host(`traefik.{{ domain }}`)"
+      - "traefik.http.routers.dashboard.service=api@internal"
+      - "traefik.http.routers.dashboard.entrypoints=websecure"
+      - "traefik.http.routers.dashboard.tls.certresolver=myresolver"
+      - "traefik.http.routers.dashboard.middlewares=authtraefik"
+      # Variable Ansible pour le mot de passe (hashé) :
+      - "traefik.http.middlewares.authtraefik.basicauth.users={{ traefik_dashboard_users | replace('$', '$$') }}"
+
+networks:
+  proxy:
+    external: true

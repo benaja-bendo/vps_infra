@@ -1,0 +1,22 @@
+---
+# Variables globales du VPS
+# Remplacez ces valeurs avant de lancer le playbook
+
+# ─── Domaine principal ───────────────────────────────────────────────────────
+domain: "your-domain.com"
+
+# ─── Traefik ─────────────────────────────────────────────────────────────────
+# Email pour les certificats Let's Encrypt
+# Mot de passe u1J*ft&4Rk$&1TT!
+traefik_acme_email: "admin@your-domain.com"
+# Identifiants du dashboard Traefik (générer avec: htpasswd -nb user password)
+traefik_dashboard_users: "admin:$$apr1$$..."
+
+# ─── PostgreSQL ───────────────────────────────────────────────────────────────
+postgres_user: "pguser"
+postgres_password: "changeme"
+postgres_db: "appdb"
+
+# ─── MinIO ────────────────────────────────────────────────────────────────────
+minio_root_user: "minioadmin"
+minio_root_password: "changeme"

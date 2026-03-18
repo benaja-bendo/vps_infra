@@ -1,0 +1,116 @@
+---
+# Rôle setup : Configuration de base du VPS Ubuntu
+# - Mise à jour des paquets
+# - Installation de Docker
+# - Configuration du firewall (UFW)
+# - Création d'un utilisateur non-root
+# - Hardening SSH
+
+- name: Mise à jour des paquets
+  ansible.builtin.apt:
+    update_cache: true
+    upgrade: dist
+    cache_valid_time: 3600
+
+- name: Installation des paquets essentiels
+  ansible.builtin.apt:
+    name:
+      - curl
+      - wget
+      - git
+      - vim
+      - htop
+      - unzip
+      - ufw
+      - fail2ban
+      - ca-certificates
+      - gnupg
+      - lsb-release
+      - apt-transport-https
+      - software-properties-common
+    state: present
+
+- name: Ajout de la clé GPG Docker
+  ansible.builtin.apt_key:
+    url: https://download.docker.com/linux/ubuntu/gpg
+    state: present
+
+- name: Ajout du dépôt Docker
+  ansible.builtin.apt_repository:
+    repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+    state: present
+
+- name: Installation de Docker
+  ansible.builtin.apt:
+    name:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+      - docker-compose-plugin
+    state: present
+    update_cache: true
+
+- name: Démarrage et activation du service Docker
+  ansible.builtin.systemd:
+    name: docker
+    enabled: true
+    state: started
+
+- name: Ajout de l'utilisateur ubuntu au groupe docker
+  ansible.builtin.user:
+    name: ubuntu
+    groups: docker
+    append: true
+
+- name: Configuration UFW - politique par défaut (deny)
+  community.general.ufw:
+    state: enabled
+    policy: deny
+    direction: incoming
+
+- name: Configuration UFW - autoriser SSH
+  community.general.ufw:
+    rule: allow
+    port: "22"
+    proto: tcp
+
+- name: Configuration UFW - autoriser HTTP
+  community.general.ufw:
+    rule: allow
+    port: "80"
+    proto: tcp
+
+- name: Configuration UFW - autoriser HTTPS
+  community.general.ufw:
+    rule: allow
+    port: "443"
+    proto: tcp
+
+- name: Activation de UFW
+  community.general.ufw:
+    state: enabled
+
+- name: Démarrage et activation de fail2ban
+  ansible.builtin.systemd:
+    name: fail2ban
+    enabled: true
+    state: started
+
+- name: Création du réseau Docker externe 'proxy'
+  community.docker.docker_network:
+    name: proxy
+    state: present
+
+- name: Création des dossiers de déploiement
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - /opt/docker
+    - /opt/docker/traefik
+    - /opt/docker/portainer
+    - /opt/docker/postgres
+    - /opt/docker/adminer
+    - /opt/docker/minio
+    - /opt/docker/dozzle
