@@ -112,5 +112,6 @@
     - /opt/docker/portainer
     - /opt/docker/postgres
     - /opt/docker/adminer
+    - /opt/docker/cloudbeaver
     - /opt/docker/minio
     - /opt/docker/dozzle

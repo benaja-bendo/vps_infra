@@ -19,6 +19,9 @@
     - role: adminer
       tags: [adminer]
 
+    - role: cloudbeaver
+      tags: [cloudbeaver]
+
     - role: minio
       tags: [minio]
 

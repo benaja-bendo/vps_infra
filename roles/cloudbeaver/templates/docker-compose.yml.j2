@@ -1,0 +1,26 @@
+services:
+  cloudbeaver:
+    image: dbeaver/cloudbeaver:latest
+    container_name: cloudbeaver
+    restart: unless-stopped
+    volumes:
+      - cloudbeaver_data:/opt/cloudbeaver/workspace
+    networks:
+      - proxy
+      - db_internal
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.cloudbeaver.rule=Host(`dbeaver.{{ domain }}`)"
+      - "traefik.http.routers.cloudbeaver.entrypoints=websecure"
+      - "traefik.http.routers.cloudbeaver.tls.certresolver=myresolver"
+      - "traefik.http.routers.cloudbeaver.middlewares=authtraefik"
+      - "traefik.http.services.cloudbeaver.loadbalancer.server.port=8978"
+
+volumes:
+  cloudbeaver_data:
+
+networks:
+  proxy:
+    external: true
+  db_internal:
+    external: true
