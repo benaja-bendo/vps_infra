@@ -1,0 +1,26 @@
+services:
+  rabbitmq:
+    image: rabbitmq:4-management
+    container_name: rabbitmq-mibeko
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: "{{ rabbitmq_user | default('guest') }}"
+      RABBITMQ_DEFAULT_PASS: "{{ rabbitmq_password | default('guest') }}"
+    volumes:
+      - ./data:/var/lib/rabbitmq
+      - ./rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+      - ./definitions.json:/etc/rabbitmq/definitions.json:ro
+    networks:
+      - proxy
+    labels:
+      - "traefik.enable=true"
+      # Console (UI)
+      - "traefik.http.routers.rabbitmq-console.rule=Host(`rabbitmq.{{ domain }}`)"
+      - "traefik.http.routers.rabbitmq-console.entrypoints=websecure"
+      - "traefik.http.routers.rabbitmq-console.tls.certresolver=myresolver"
+      - "traefik.http.routers.rabbitmq-console.service=rabbitmq-console"
+      - "traefik.http.services.rabbitmq-console.loadbalancer.server.port=15672"
+
+networks:
+  proxy:
+    external: true

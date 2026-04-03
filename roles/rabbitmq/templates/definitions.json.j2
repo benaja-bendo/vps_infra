@@ -1,0 +1,71 @@
+{
+  "rabbit_version": "4.0.0",
+  "users": [
+    {
+      "name": "{{ rabbitmq_user | default('guest') }}",
+      "password": "{{ rabbitmq_password | default('guest') }}", 
+      "tags": "administrator"
+    }
+  ],
+  "vhosts": [
+    {
+      "name": "/"
+    }
+  ],
+  "permissions": [
+    {
+      "user": "{{ rabbitmq_user | default('guest') }}",
+      "vhost": "/",
+      "configure": ".*",
+      "write": ".*",
+      "read": ".*"
+    }
+  ],
+  "queues": [
+    {
+      "name": "pdf_extraction_tasks",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-dead-letter-exchange": "pdf_extraction_tasks_dlx",
+        "x-dead-letter-routing-key": "dead_letter"
+      }
+    },
+    {
+      "name": "pdf_extraction_tasks_dlq",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "pdf_extraction_status",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    }
+  ],
+  "exchanges": [
+    {
+      "name": "pdf_extraction_tasks_dlx",
+      "vhost": "/",
+      "type": "direct",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    }
+  ],
+  "bindings": [
+    {
+      "source": "pdf_extraction_tasks_dlx",
+      "vhost": "/",
+      "destination": "pdf_extraction_tasks_dlq",
+      "destination_type": "queue",
+      "routing_key": "dead_letter",
+      "arguments": {}
+    }
+  ]
+}

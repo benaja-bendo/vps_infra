@@ -26,6 +26,23 @@ services:
       - "traefik.http.routers.minio-api.service=minio-api"
       - "traefik.http.services.minio-api.loadbalancer.server.port=9000"
 
+  minio-createbuckets:
+    image: minio/mc
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      sleep 10;
+      /usr/bin/mc config host add myminio http://minio:9000 {{ minio_root_user }} {{ minio_root_password }};
+      /usr/bin/mc mb myminio/pdfs || true;
+      /usr/bin/mc mb myminio/extractions || true;
+      /usr/bin/mc mb myminio/mibeko-documents || true;
+      /usr/bin/mc anonymous set public myminio/mibeko-documents || true;
+      exit 0;
+      "
+    networks:
+      - proxy
+
 volumes:
   minio_data:
 

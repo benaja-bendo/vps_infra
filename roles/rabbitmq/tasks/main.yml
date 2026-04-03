@@ -1,0 +1,40 @@
+---
+- name: Créer le dossier pour RabbitMQ
+  ansible.builtin.file:
+    path: /opt/docker/rabbitmq
+    state: directory
+    mode: '0755'
+    owner: "{{ ansible_user | default('root') }}"
+    group: docker
+
+- name: Créer le dossier pour RabbitMQ (data)
+  ansible.builtin.file:
+    path: /opt/docker/rabbitmq/data
+    state: directory
+    mode: '0755'
+    owner: "999"  # UID de l'utilisateur rabbitmq dans l'image
+    group: docker
+
+- name: Copier le fichier rabbitmq.conf
+  ansible.builtin.template:
+    src: rabbitmq.conf.j2
+    dest: /opt/docker/rabbitmq/rabbitmq.conf
+    mode: '0644'
+
+- name: Copier le fichier definitions.json
+  ansible.builtin.template:
+    src: definitions.json.j2
+    dest: /opt/docker/rabbitmq/definitions.json
+    mode: '0644'
+
+- name: Copier le fichier docker-compose pour RabbitMQ
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: /opt/docker/rabbitmq/docker-compose.yml
+    mode: '0644'
+
+- name: Démarrer RabbitMQ
+  community.docker.docker_compose_v2:
+    project_src: /opt/docker/rabbitmq
+    state: present
+    pull: missing

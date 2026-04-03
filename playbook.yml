@@ -25,5 +25,8 @@
     - role: minio
       tags: [minio]
 
+    - role: rabbitmq
+      tags: [rabbitmq]
+
     - role: dozzle
       tags: [dozzle]
