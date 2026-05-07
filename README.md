@@ -273,6 +273,27 @@ chmod 600 .vault_pass
 ansible-playbook playbook.yml --vault-password-file .vault_pass
 ```
 
+## Accès local à la base de données (PostgreSQL)
+
+Pour des raisons de sécurité, le port 5432 de PostgreSQL n'est pas exposé publiquement sur internet. Il est uniquement accessible localement sur le VPS (`127.0.0.1`). 
+
+Pour vous connecter à la base de données depuis votre machine locale (Mac/PC) avec votre outil préféré (DataGrip, DBeaver, TablePlus, etc.), vous devez créer un **Tunnel SSH**.
+
+### Procédure
+
+1. **Ouvrez un terminal** sur votre machine locale et exécutez la commande suivante :
+   ```bash
+   ssh -N -L 5432:127.0.0.1:5432 ubuntu@185.143.102.169
+   ```
+   *Note : Laissez ce terminal ouvert pendant votre session. Il transfère de manière sécurisée le trafic du port 5432 de votre ordinateur vers le port 5432 du VPS.*
+
+2. **Configurez votre client de base de données** avec ces paramètres :
+   - **Hôte** : `localhost` (ou `127.0.0.1`)
+   - **Port** : `5432`
+   - **Utilisateur / Mot de passe** : Ceux définis dans votre configuration (ex: fichier `group_vars/vps.yml`).
+
+3. Une fois votre travail terminé, fermez simplement le tunnel en tapant `Ctrl+C` dans le terminal.
+
 ---
 
 ## Historique des modifications
