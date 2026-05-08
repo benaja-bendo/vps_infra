@@ -9,6 +9,9 @@ services:
       MINIO_ROOT_PASSWORD: "{{ minio_root_password }}"
     volumes:
       - minio_data:/data
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
     networks:
       - proxy
     labels:

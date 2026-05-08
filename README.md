@@ -294,6 +294,31 @@ Pour vous connecter à la base de données depuis votre machine locale (Mac/PC) 
 
 3. Une fois votre travail terminé, fermez simplement le tunnel en tapant `Ctrl+C` dans le terminal.
 
+## Accès local à MinIO (API S3 + Console)
+
+Comme PostgreSQL, MinIO n'expose pas ses ports publiquement. Les ports 9000 (API S3) et 9001 (Console) sont accessibles uniquement en local sur le VPS (`127.0.0.1`).
+
+### Procédure
+
+1. **Ouvrez un terminal** sur votre machine locale et démarrez un tunnel SSH :
+   ```bash
+   ssh -N -L 9000:127.0.0.1:9000 -L 9001:127.0.0.1:9001 ubuntu@185.143.102.169
+   ```
+
+2. **Accédez à la console MinIO** :
+   - URL : `http://localhost:9001`
+   - Identifiants : `minio_root_user` / `minio_root_password` (dans `group_vars/vps.yml`)
+
+3. **Utilisez l'API S3 en local** :
+   - Endpoint : `http://localhost:9000`
+   - Exemple avec MinIO Client (`mc`) :
+     ```bash
+     mc alias set local http://localhost:9000 <minio_root_user> <minio_root_password>
+     mc ls local
+     ```
+
+4. Pour arrêter le tunnel : `Ctrl+C`.
+
 ---
 
 ## Historique des modifications
