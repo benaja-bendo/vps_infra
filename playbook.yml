@@ -19,14 +19,14 @@
     - role: adminer
       tags: [adminer]
 
-    - role: cloudbeaver
-      tags: [cloudbeaver]
+    # - role: cloudbeaver
+    #   tags: [cloudbeaver]
 
     - role: minio
       tags: [minio]
 
-    - role: rabbitmq
-      tags: [rabbitmq]
+    # - role: rabbitmq
+    #   tags: [rabbitmq]
 
     - role: dozzle
       tags: [dozzle]

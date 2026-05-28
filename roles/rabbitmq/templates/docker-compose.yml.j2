@@ -1,6 +1,6 @@
 services:
   rabbitmq:
-    image: rabbitmq:4-management
+    image: public.ecr.aws/docker/library/rabbitmq:4-management
     container_name: rabbitmq-mibeko
     restart: unless-stopped
     environment:

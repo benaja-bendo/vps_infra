@@ -30,7 +30,7 @@ services:
       - "traefik.http.services.minio-api.loadbalancer.server.port=9000"
 
   minio-createbuckets:
-    image: minio/mc
+    image: quay.io/minio/mc
     depends_on:
       - minio
     entrypoint: >
