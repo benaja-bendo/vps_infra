@@ -20,7 +20,3 @@ postgres_db: "appdb"
 # ─── MinIO ────────────────────────────────────────────────────────────────────
 minio_root_user: "minioadmin"
 minio_root_password: "changeme"
-
-# ─── RabbitMQ ─────────────────────────────────────────────────────────────────
-rabbitmq_user: "guest"
-rabbitmq_password: "guest"

@@ -323,26 +323,13 @@ Comme PostgreSQL, MinIO n'expose pas ses ports publiquement. Les ports 9000 (API
 
 ## Historique des modifications
 
-### [Mise à jour Récente] - Intégration RabbitMQ et MinIO pour l'architecture microservices
+### [Mise à jour Récente] - Configuration MinIO pour l'architecture microservices
 
 Afin d'assurer le bon fonctionnement de l'application Laravel (Tableau de Bord) et du worker Python (Extraction) en production sur le VPS, l'infrastructure a été mise à jour :
 
-1. **Nouveau rôle RabbitMQ** (`roles/rabbitmq`) :
-   - Déploiement de `rabbitmq:4-management`.
-   - Injection de `rabbitmq.conf` et `definitions.json` pour préconfigurer automatiquement :
-     - Les files d'attente : `pdf_extraction_tasks`, `pdf_extraction_status` et la Dead Letter Queue (DLQ) `pdf_extraction_tasks_dlq`.
-     - L'exchange `pdf_extraction_tasks_dlx` (type `direct`).
-     - Le binding de la DLQ avec la routing key `dead_letter`.
-   - Interface d'administration accessible via `rabbitmq.{{ domain }}` (port 15672).
-
-2. **Mise à jour du rôle MinIO** (`roles/minio`) :
+1. **Rôle MinIO** (`roles/minio`) :
    - Ajout d'un container éphémère `minio-createbuckets` (utilisant l'image `minio/mc`).
    - Création automatique des buckets au démarrage : `pdfs`, `extractions` et `mibeko-documents`.
    - Configuration de la politique d'accès publique pour `mibeko-documents` afin que les documents puissent être servis par Laravel si nécessaire.
 
-3. **Mise à jour du Playbook et Variables** :
-   - Ajout de `rabbitmq` dans `playbook.yml`.
-   - Ajout des variables `rabbitmq_user` et `rabbitmq_password` dans `group_vars/vps.example.yml`.
-
-4. **Script de Test de Connexion** :
-   - Ajout de `test_connections.py` pour vérifier facilement l'accès local à RabbitMQ (pika) et MinIO (minio) depuis le VPS.
+> **Note (retrait RabbitMQ)** : le rôle `rabbitmq` et les variables `rabbitmq_*` ont été retirés. L'extraction PDF est désormais traitée de façon synchrone dans les jobs de la file Laravel (`ProcessDocumentExtraction` → MinerU), sans broker de messages.
