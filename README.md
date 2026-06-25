@@ -139,6 +139,7 @@ vps_infra/
     ├── postgres/            # Base de données PostgreSQL
     ├── adminer/             # Interface web PostgreSQL
     ├── minio/               # Stockage objet compatible S3
+    ├── mineru/              # Serveur MinerU (extraction PDF → MD/JSON, CPU)
     └── dozzle/              # Viewer de logs Docker
 ```
 
@@ -210,6 +211,7 @@ ansible-playbook playbook.yml --tags portainer
 ansible-playbook playbook.yml --tags postgres
 ansible-playbook playbook.yml --tags adminer
 ansible-playbook playbook.yml --tags minio
+ansible-playbook playbook.yml --tags mineru
 ansible-playbook playbook.yml --tags dozzle
 ```
 
@@ -321,7 +323,124 @@ Comme PostgreSQL, MinIO n'expose pas ses ports publiquement. Les ports 9000 (API
 
 ---
 
+## MinerU (extraction PDF → Markdown/JSON)
+
+Service d'API qui transforme un PDF en Markdown + JSON structuré (backend
+`pipeline`, **CPU**). Il remplace l'API SaaS MinerU : les projets d'ingestion
+(worker Python, jobs Laravel) l'appellent en interne, sans coût ni quota.
+
+> **Image maison.** Pas d'image officielle exploitable sans GPU : Ansible
+> **construit** l'image `mibeko/mineru-cpu:<version>` directement sur le VPS à
+> partir de `roles/mineru/files/Dockerfile`. La 1re construction est **longue**
+> (torch + dépendances, plusieurs minutes) ; ensuite l'image est en cache.
+
+### Déploiement
+
+```bash
+ansible-playbook playbook.yml --tags mineru
+```
+
+Le rôle, de façon **idempotente** :
+1. crée le réseau interne `mineru_internal` ;
+2. construit l'image **si** le tag `mineru_version` n'existe pas encore (un bump
+   de version relance donc le build, sinon non) ;
+3. **pré-télécharge les modèles** « pipeline » une seule fois dans le volume
+   `mineru-models` (marqueur `/opt/docker/mineru/.models-downloaded`) — évite une
+   1re requête de parsing très lente ;
+4. démarre le serveur (`restart: unless-stopped`, healthcheck `/health`).
+
+Re-jouer le playbook ne reconstruit rien et ne re-télécharge pas les modèles.
+
+### Sécurité — service interne, jamais public
+
+MinerU **n'a aucune authentification** et c'est un endpoint de calcul lourd : il
+n'est **pas** routé par Traefik. Deux accès seulement :
+
+| Depuis | Adresse | Usage |
+|---|---|---|
+| Un conteneur sur `mineru_internal` | `http://mineru:8000` | **prod** (worker/Laravel) |
+| L'hôte VPS / tunnel SSH local | `http://127.0.0.1:8004` | debug, tests `curl` |
+
+Aucun port n'est ouvert dans UFW (bind `127.0.0.1` + réseau Docker privé).
+
+### Brancher un projet consommateur
+
+**Cas 1 — le projet tourne en Docker sur le VPS** (recommandé) : attacher son
+conteneur au réseau externe `mineru_internal` et viser le nom de service.
+
+```yaml
+# docker-compose.yml du projet consommateur (ex: mibeko-python)
+services:
+  worker:
+    # …
+    environment:
+      MINERU_BACKEND: local
+      MINERU_API_URL: "http://mineru:8000"   # nom du service sur mineru_internal
+    networks:
+      - mineru_internal
+networks:
+  mineru_internal:
+    external: true
+```
+
+**Cas 2 — le projet tourne sur l'hôte** (php-fpm, binaire natif) : viser
+`http://127.0.0.1:8004`.
+
+**Cas 3 — depuis ta machine de dev** : tunnel SSH puis `http://localhost:8004`.
+
+```bash
+ssh -N -L 8004:127.0.0.1:8004 ubuntu@185.143.102.169
+curl http://localhost:8004/health        # → {"status":"healthy", ...}
+```
+
+> Rappel API : toujours envoyer `backend=pipeline` (le backend par défaut exige un
+> GPU). Pour le français (latin), **omettre** `lang_list` (le modèle `ch` lit le
+> latin ; `fr` n'est pas accepté). Géré côté `mibeko-python`.
+
+### Ressources
+
+MinerU CPU est gourmand : prévoir **≥ 6 Go de RAM** disponibles, sinon risque
+d'`OOMKilled` en plein parsing. `shm_size` est déjà à 2 Go. Si besoin de plafonner
+la mémoire, renseigner `mineru_mem_limit` (ex: `"8g"`) — mais une limite trop
+basse tue le parsing. Sur ce VPS (amd64 Linux), l'image tourne en natif (pas
+d'émulation), donc plus vite que sur un Mac Apple Silicon.
+
+### Maintenance
+
+```bash
+# Logs
+docker compose -f /opt/docker/mineru/docker-compose.yml logs -f mineru
+
+# Changer de version : éditer mineru_version (group_vars/vps.yml ou defaults),
+# puis rejouer — l'image au nouveau tag est reconstruite automatiquement.
+ansible-playbook playbook.yml --tags mineru
+
+# Forcer un re-téléchargement des modèles : supprimer le marqueur puis rejouer.
+ssh ubuntu@185.143.102.169 'rm -f /opt/docker/mineru/.models-downloaded'
+
+# Repartir de zéro (modèles inclus) : supprimer le volume ET le marqueur,
+# sinon le prochain déploiement sauterait le re-téléchargement.
+ssh ubuntu@185.143.102.169 'cd /opt/docker/mineru && docker compose down -v && rm -f .models-downloaded'
+```
+
+---
+
 ## Historique des modifications
+
+### [Mise à jour Récente] - Ajout du service MinerU (extraction PDF en self-hosted)
+
+Ajout d'un rôle `mineru` pour héberger l'extraction PDF → Markdown/JSON sur le VPS,
+sans dépendre de l'API SaaS MinerU :
+
+1. **Rôle MinerU** (`roles/mineru`) :
+   - Image CPU `mibeko/mineru-cpu` **construite sur le VPS** (backend `pipeline`,
+     `linux/amd64`), version épinglée via `mineru_version`.
+   - Réseau interne dédié `mineru_internal` ; service **non exposé** par Traefik
+     (bind `127.0.0.1:8004` pour debug). Consommateurs → `http://mineru:8000`.
+   - Pré-téléchargement idempotent des modèles dans le volume `mineru-models`.
+   - Variables configurables dans `roles/mineru/defaults/main.yml` (surchargeables
+     dans `group_vars/vps.yml`).
+
 
 ### [Mise à jour Récente] - Configuration MinIO pour l'architecture microservices
 

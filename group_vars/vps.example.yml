@@ -20,3 +20,11 @@ postgres_db: "appdb"
 # ─── MinIO ────────────────────────────────────────────────────────────────────
 minio_root_user: "minioadmin"
 minio_root_password: "changeme"
+
+# ─── MinerU (extraction PDF → MD/JSON) ────────────────────────────────────────
+# Optionnel : le rôle a déjà des valeurs par défaut (roles/mineru/defaults/main.yml).
+# Décommenter pour surcharger.
+# mineru_version: "3.4.0"          # doit matcher une version publiée sur PyPI
+# mineru_port: 8004               # bind 127.0.0.1 uniquement (debug / tunnel SSH)
+# mineru_model_source: "huggingface"  # ou "modelscope" si HF lent/bloqué
+# mineru_mem_limit: ""            # ex: "8g" ; vide = pas de limite

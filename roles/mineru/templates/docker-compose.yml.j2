@@ -1,0 +1,64 @@
+# Géré par Ansible (roles/mineru) — ne pas éditer à la main sur le serveur.
+#
+# Serveur d'API MinerU (FastAPI) — extraction PDF → Markdown/JSON.
+#   Endpoints : POST /file_parse, /tasks, GET /health, /docs (Swagger).
+#   Image construite localement par Ansible (pas de registre) → pull: never.
+#
+# Accès :
+#   - Conteneurs consommateurs : réseau 'mineru_internal' → http://mineru:8000
+#   - Debug / tunnel SSH local : http://127.0.0.1:{{ mineru_port }}
+services:
+  mineru:
+    image: "{{ mineru_image }}:{{ mineru_version }}"
+    container_name: mineru
+    platform: linux/amd64
+    restart: unless-stopped
+    environment:
+      MINERU_DEVICE_MODE: cpu
+      MINERU_MODEL_SOURCE: "{{ mineru_model_source }}"
+    volumes:
+      # Cache des modèles : téléchargés une seule fois, réutilisés ensuite.
+      - mineru-models:/models
+    # torch/OpenCV ont besoin de mémoire partagée ; sans ça, crashs aléatoires.
+    shm_size: "2gb"
+{% if mineru_mem_limit | default('') | length > 0 %}
+    mem_limit: "{{ mineru_mem_limit }}"
+{% endif %}
+    # Exposé uniquement en local (127.0.0.1). PAS de route Traefik : MinerU n'a
+    # aucune authentification et c'est un service de calcul lourd.
+    ports:
+      - "127.0.0.1:{{ mineru_port }}:8000"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      # Laisse le temps au serveur de démarrer (1er chargement modèle long).
+      start_period: 180s
+    networks:
+      - mineru_internal
+
+  # Service jetable : pré-télécharge les modèles « pipeline » dans le volume
+  # partagé, puis s'arrête. Lancé une seule fois par Ansible (cf. tasks/main.yml).
+  #   docker compose --profile setup run --rm mineru-models
+  mineru-models:
+    image: "{{ mineru_image }}:{{ mineru_version }}"
+    platform: linux/amd64
+    profiles: ["setup"]
+    environment:
+      MINERU_MODEL_SOURCE: "{{ mineru_model_source }}"
+      HF_HOME: /models/huggingface
+      MODELSCOPE_CACHE: /models/modelscope
+      MINERU_TOOLS_CONFIG_JSON: /models/mineru.json
+    volumes:
+      - mineru-models:/models
+    entrypoint: ["mineru-models-download", "-s", "{{ mineru_model_source }}", "-m", "pipeline"]
+    networks:
+      - mineru_internal
+
+volumes:
+  mineru-models:
+
+networks:
+  mineru_internal:
+    external: true

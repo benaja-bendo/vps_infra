@@ -114,4 +114,5 @@
     - /opt/docker/adminer
     - /opt/docker/cloudbeaver
     - /opt/docker/minio
+    - /opt/docker/mineru
     - /opt/docker/dozzle

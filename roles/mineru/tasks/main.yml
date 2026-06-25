@@ -1,0 +1,70 @@
+---
+# Réseau interne dédié : les projets consommateurs (worker Python, Laravel…)
+# s'y attachent pour joindre http://mineru:8000 sans exposer de port public.
+- name: Créer le réseau Docker interne 'mineru_internal'
+  community.docker.docker_network:
+    name: mineru_internal
+    state: present
+
+- name: Créer le dossier pour MinerU
+  ansible.builtin.file:
+    path: /opt/docker/mineru
+    state: directory
+    mode: '0755'
+    owner: "{{ ansible_user | default('root') }}"
+    group: docker
+
+- name: Copier le Dockerfile MinerU (contexte de build)
+  ansible.builtin.copy:
+    src: Dockerfile
+    dest: /opt/docker/mineru/Dockerfile
+    mode: '0644'
+
+- name: Copier le fichier docker-compose pour MinerU
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: /opt/docker/mineru/docker-compose.yml
+    mode: '0644'
+
+# Build idempotent : on ne reconstruit que si le tag d'image est absent.
+# Un bump de mineru_version change le tag → reconstruction automatique.
+- name: Vérifier si l'image MinerU est déjà construite
+  ansible.builtin.command: "docker image inspect {{ mineru_image }}:{{ mineru_version }}"
+  register: mineru_image_check
+  changed_when: false
+  failed_when: false
+
+- name: Construire l'image MinerU CPU (long la 1re fois — torch & deps)
+  ansible.builtin.command:
+    cmd: >-
+      docker build
+      --platform linux/amd64
+      --build-arg MINERU_VERSION={{ mineru_version }}
+      -t {{ mineru_image }}:{{ mineru_version }}
+      .
+    chdir: /opt/docker/mineru
+  when: mineru_image_check.rc != 0
+
+# Pré-téléchargement des modèles « pipeline » dans le volume, avant de démarrer
+# le serveur, pour éviter une 1re requête de parsing très lente. Idempotent via
+# le marqueur .models-downloaded (rejoué seulement si le téléchargement échoue).
+- name: Pré-télécharger les modèles MinerU (long, une seule fois)
+  ansible.builtin.command:
+    cmd: docker compose --profile setup run --rm mineru-models
+    chdir: /opt/docker/mineru
+    creates: /opt/docker/mineru/.models-downloaded
+  register: mineru_models_dl
+
+- name: Marquer les modèles MinerU comme téléchargés
+  ansible.builtin.file:
+    path: /opt/docker/mineru/.models-downloaded
+    state: touch
+    mode: '0644'
+  when: mineru_models_dl is changed
+
+# Image déjà construite localement → pull: never (pas de registre).
+- name: Démarrer MinerU
+  community.docker.docker_compose_v2:
+    project_src: /opt/docker/mineru
+    state: present
+    pull: never

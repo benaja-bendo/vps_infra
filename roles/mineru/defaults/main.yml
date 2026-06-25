@@ -1,0 +1,21 @@
+---
+# ─── Image MinerU (construite localement sur le VPS, pas de registre) ──────────
+# Le tag suit la version MinerU pour une reconstruction propre lors d'un bump.
+mineru_image: "mibeko/mineru-cpu"
+mineru_version: "3.4.0"
+
+# ─── Réseau / exposition ──────────────────────────────────────────────────────
+# Port d'écoute exposé UNIQUEMENT en local (127.0.0.1) : debug / tunnel SSH.
+# Les conteneurs consommateurs passent par http://mineru:8000 (réseau mineru_internal),
+# ils n'utilisent PAS ce port hôte.
+mineru_port: 8004
+
+# ─── Modèles ──────────────────────────────────────────────────────────────────
+# Source de téléchargement au 1er lancement : huggingface | modelscope
+mineru_model_source: "huggingface"
+
+# ─── Ressources (optionnel) ───────────────────────────────────────────────────
+# Limite mémoire du conteneur, ex: "8g". Vide = pas de limite.
+# ⚠️ MinerU CPU est gourmand (≥ 6 Go conseillés) ; une limite trop basse provoque
+# des OOM en plein parsing. Laisser vide si le VPS a assez de RAM.
+mineru_mem_limit: ""
