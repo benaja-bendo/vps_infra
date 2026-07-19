@@ -1,0 +1,13 @@
+---
+# Configuration dynamique Traefik (provider file) — middlewares partagés.
+# Réutilisables par n'importe quel routeur (labels Docker des composes GHCR)
+# via le suffixe @file, ex :
+#   traefik.http.routers.python.middlewares=upload-limit@file
+http:
+  middlewares:
+    # Plafond de taille de requête pour les routes d'upload
+    # (python.{{ domain }}). Au-delà → 413 Request Entity Too Large.
+    upload-limit:
+      buffering:
+        maxRequestBodyBytes: {{ traefik_upload_limit_max_body_bytes }}
+        memRequestBodyBytes: {{ traefik_upload_limit_mem_body_bytes }}

@@ -20,6 +20,20 @@
     modification_time: preserve
     access_time: preserve
 
+- name: Créer le dossier de configuration dynamique (provider file)
+  ansible.builtin.file:
+    path: /opt/docker/traefik/dynamic
+    state: directory
+    mode: '0755'
+    owner: "{{ ansible_user }}"
+    group: docker
+
+- name: Copier les middlewares partagés (provider file)
+  ansible.builtin.template:
+    src: dynamic-middlewares.yml.j2
+    dest: /opt/docker/traefik/dynamic/middlewares.yml
+    mode: '0644'
+
 - name: Copier le fichier docker-compose
   ansible.builtin.template:
     src: docker-compose.yml.j2

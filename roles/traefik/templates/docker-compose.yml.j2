@@ -13,11 +13,16 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./acme.json:/acme.json
+      - ./dynamic:/dynamic:ro
     command:
       - "--api.dashboard=true"
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
       - "--providers.docker.network=proxy"
+      # Provider file : middlewares partagés (ex: upload-limit) référencés
+      # depuis les labels des composes applicatifs via "<nom>@file".
+      - "--providers.file.directory=/dynamic"
+      - "--providers.file.watch=true"
       - "--entrypoints.web.address=:80"
       - "--entrypoints.websecure.address=:443"
       - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
