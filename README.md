@@ -1,6 +1,6 @@
 # VPS Infrastructure — Ansible
 
-Projet Ansible pour configurer un serveur VPS Ubuntu avec Docker et les services nécessaires (Traefik, Portainer, PostgreSQL, Adminer, MinIO, Dozzle).
+Projet Ansible pour configurer un serveur VPS Ubuntu avec Docker et les services nécessaires (Traefik, Portainer, PostgreSQL, Adminer, MinIO, MinerU, Dozzle, Umami).
 
 ---
 
@@ -134,13 +134,14 @@ vps_infra/
 ├── playbook.yml             # Playbook principal
 └── roles/
     ├── setup/               # Configuration de base Ubuntu (SSH, Docker, firewall)
-    ├── traefik/             # Reverse proxy + TLS (Let's Encrypt)
+    ├── traefik/             # Reverse proxy + TLS (Let's Encrypt) + middlewares partagés (provider file)
     ├── portainer/           # Interface de gestion Docker
     ├── postgres/            # Base de données PostgreSQL
     ├── adminer/             # Interface web PostgreSQL
     ├── minio/               # Stockage objet compatible S3
     ├── mineru/              # Serveur MinerU (extraction PDF → MD/JSON, CPU)
-    └── dozzle/              # Viewer de logs Docker
+    ├── dozzle/              # Viewer de logs Docker
+    └── umami/               # Analytics self-hosted (stats.<domain>)
 ```
 
 ---
@@ -159,6 +160,8 @@ Les variables sensibles sont à placer dans `group_vars/vps.yml` (non versionné
 | `postgres_password` | Mot de passe PostgreSQL | voir Vault |
 | `minio_root_user` | Utilisateur root MinIO | `minioadmin` |
 | `minio_root_password` | Mot de passe root MinIO | voir Vault |
+| `umami_db_password` | Mot de passe du user PostgreSQL dédié Umami (sans caractères spéciaux d'URL) | `openssl rand -hex 16` |
+| `umami_app_secret` | `APP_SECRET` Umami (signature des sessions) | `openssl rand -hex 32` |
 
 ### Créer le fichier group_vars/vps.yml
 
@@ -213,6 +216,7 @@ ansible-playbook playbook.yml --tags adminer
 ansible-playbook playbook.yml --tags minio
 ansible-playbook playbook.yml --tags mineru
 ansible-playbook playbook.yml --tags dozzle
+ansible-playbook playbook.yml --tags umami
 ```
 
 ### Mode dry-run (simulation sans modification)
@@ -425,7 +429,140 @@ ssh ubuntu@185.143.102.169 'cd /opt/docker/mineru && docker compose down -v && r
 
 ---
 
+## Umami (analytics self-hosted)
+
+Analytics respectueux de la vie privée (sans cookies, sans données perso),
+auto-hébergé sur `stats.<domain>` (ex : `stats.mibeko.fr`). Remplace un service
+tiers type Google Analytics ; les fronts (site vitrine, corpus public, app pro)
+chargent son `script.js` et lui envoient leurs pageviews.
+
+### Architecture
+
+| Élément | Détail |
+|---|---|
+| Image | `ghcr.io/umami-software/umami:postgresql-latest` (variante PostgreSQL) |
+| Base de données | Base + user PostgreSQL **dédiés** (`umami` / `umami`), créés **de façon idempotente** par le rôle dans l'instance Postgres existante du VPS (conteneur `postgres`, réseau `db_internal`) |
+| Réseaux | `proxy` (Traefik) + `db_internal` (accès Postgres) |
+| Routage | Traefik, `Host(stats.<domain>)`, TLS Let's Encrypt (`myresolver`), **pas** de BasicAuth (Umami gère sa propre auth ; `/script.js` doit rester public) |
+| Port interne | `3000` |
+
+> Le rôle `umami` tourne **après** `postgres` dans le playbook : il attend que
+> Postgres accepte les connexions (`pg_isready`), puis crée le user et la base
+> dédiés s'ils n'existent pas (aucune donnée existante n'est touchée).
+
+### Déploiement
+
+```bash
+# 1. Renseigner les secrets dans group_vars/vps.yml (voir vps.example.yml) :
+#    umami_db_password: "<openssl rand -hex 16>"   # sans caractères spéciaux d'URL
+#    umami_app_secret:  "<openssl rand -hex 32>"
+
+# 2. Créer l'enregistrement DNS  stats.<domain>  →  IP du VPS (userAction)
+
+# 3. Déployer le rôle
+ansible-playbook playbook.yml --tags umami
+```
+
+> **⚠️ Mot de passe DB** : `umami_db_password` est injecté tel quel dans
+> `DATABASE_URL` (`postgresql://umami:<pwd>@postgres:5432/umami`). Éviter les
+> caractères réservés d'URL (`@ : / # ? espace…`) — utiliser un hex simple.
+
+### Créer le site et récupérer le website-id
+
+1. Ouvrir `https://stats.<domain>` et se connecter avec le compte par défaut
+   (`admin` / `umami`) — **changer le mot de passe immédiatement** (Settings →
+   Profile).
+2. Aller dans **Settings → Websites → Add website**, renseigner le nom et le
+   domaine (ex : `mibeko.fr`), puis **Save**.
+3. Ouvrir le site créé → **Edit** : le **Website ID** (UUID) est affiché, ainsi
+   qu'un snippet `<script>` avec `data-website-id`. C'est cet UUID que les fronts
+   doivent utiliser.
+
+### Brancher un front
+
+Chaque front charge le script de tracking et pointe vers l'instance + le
+website-id. Selon le bundler, exposer ces variables d'environnement :
+
+> **Important** : la variable URL est l'**origine de base** de l'instance Umami
+> (`https://stats.<domain>`), **sans** `/script.js`. Chaque front ajoute lui-même
+> le suffixe `/script.js` (cf. `mibeko-front/vite.config.ts` et le `Layout.astro`
+> du site vitrine). Ne pas y mettre l'URL complète du script, sinon le tag rendu
+> pointerait vers `.../script.js/script.js` et ne collecterait rien.
+
+| Front | Variable URL (base) | Variable ID |
+|---|---|---|
+| Vite (`mibeko-front`, app pro) | `VITE_UMAMI_URL` = `https://stats.<domain>` | `VITE_UMAMI_WEBSITE_ID` = `<website-id>` |
+| Astro (`mibeko-site`, `PUBLIC_` exposé au client) | `PUBLIC_UMAMI_URL` = `https://stats.<domain>` | `PUBLIC_UMAMI_WEBSITE_ID` = `<website-id>` |
+
+Exemple de balise rendue par le front :
+
+```html
+<script defer
+        src="https://stats.mibeko.fr/script.js"
+        data-website-id="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"></script>
+```
+
+> Le `script.js` d'Umami est servi **sans BasicAuth** (indispensable pour le
+> tracking public), contrairement au dashboard Traefik / Dozzle / Adminer.
+
+### Maintenance
+
+```bash
+# Logs
+docker compose -f /opt/docker/umami/docker-compose.yml logs -f umami
+
+# Mise à jour de l'image (bump du tag dans group_vars ou defaults, puis)
+ansible-playbook playbook.yml --tags umami
+```
+
+---
+
+## Traefik — middlewares partagés (provider file)
+
+En plus du provider Docker (labels par conteneur), Traefik charge un **provider
+file** (`/opt/docker/traefik/dynamic/`) pour les middlewares réutilisables entre
+plusieurs services, y compris ceux dont le `docker-compose` vit **hors de ce
+dépôt** (images GHCR déployées à part).
+
+Middleware fourni :
+
+| Nom | Rôle | Défaut |
+|---|---|---|
+| `upload-limit` | Plafonne la taille du corps de requête (`buffering.maxRequestBodyBytes`). Au-delà → `413`. À attacher aux routes d'upload (ex : `python.<domain>`). | ~120 Mo (`traefik_upload_limit_max_body_bytes`, cf. `roles/traefik/defaults/main.yml`) |
+
+**Attacher le middleware** depuis les labels d'un compose applicatif (suffixe
+`@file`, car il est défini par le provider file et non par un label Docker) :
+
+```yaml
+labels:
+  - "traefik.http.routers.python.middlewares=upload-limit@file"
+```
+
+> **userAction** : les labels des services applicatifs (ex : `mibeko-python`)
+> vivent dans leurs propres composes GHCR, **hors de ce dépôt**. Ce dépôt
+> **définit** le middleware ; il faut **ajouter le label ci-dessus** au compose du
+> service Python pour l'activer. Après déploiement de Traefik, le middleware est
+> visible dans le dashboard (`traefik.<domain>`) sous `upload-limit@file`.
+
+---
+
 ## Historique des modifications
+
+### [Mise à jour Récente] - Ajout d'Umami (analytics) + middlewares Traefik partagés
+
+1. **Rôle Umami** (`roles/umami`) :
+   - Analytics self-hosted sur `stats.<domain>` (image officielle variante
+     PostgreSQL), routé par Traefik avec TLS Let's Encrypt, **sans BasicAuth**
+     (auth propre + `script.js` public).
+   - Base + user PostgreSQL **dédiés** créés de façon idempotente dans l'instance
+     Postgres existante (attente `pg_isready`, `CREATE USER/DATABASE` conditionnels).
+   - Secrets `umami_db_password` / `umami_app_secret` dans `group_vars/vps.yml`
+     (défauts non sensibles dans `roles/umami/defaults/main.yml`).
+2. **Traefik — provider file** (`roles/traefik/defaults` + `dynamic-middlewares.yml.j2`) :
+   - Chargement d'un provider file (`--providers.file.directory=/dynamic`) pour
+     les middlewares partagés entre services (y compris composes GHCR hors dépôt).
+   - Middleware `upload-limit` (~120 Mo) à attacher via `upload-limit@file` aux
+     routes d'upload (ex : `python.<domain>`).
 
 ### [Mise à jour Récente] - Ajout du service MinerU (extraction PDF en self-hosted)
 

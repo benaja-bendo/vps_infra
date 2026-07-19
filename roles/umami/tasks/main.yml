@@ -1,0 +1,97 @@
+---
+# La base vit dans l'instance Postgres existante du VPS (rôle postgres,
+# conteneur "postgres" sur le réseau db_internal). Création idempotente via
+# docker exec psql — pas de dépendance psycopg2 sur l'hôte.
+
+# Le rôle postgres tourne juste avant, mais docker_compose_v2 ne bloque pas
+# jusqu'à l'état "healthy" : on attend que Postgres accepte les connexions
+# avant tout psql, sinon la création de base/user échoue au 1er déploiement.
+- name: Attendre que PostgreSQL accepte les connexions
+  community.docker.docker_container_exec:
+    container: postgres
+    argv:
+      - pg_isready
+      - -U
+      - "{{ postgres_user }}"
+  register: umami_pg_ready
+  until: umami_pg_ready.rc == 0
+  retries: 12
+  delay: 5
+  changed_when: false
+
+- name: Vérifier si l'utilisateur PostgreSQL Umami existe
+  community.docker.docker_container_exec:
+    container: postgres
+    argv:
+      - psql
+      - -U
+      - "{{ postgres_user }}"
+      - -d
+      - postgres
+      - -tAc
+      - "SELECT 1 FROM pg_roles WHERE rolname = '{{ umami_db_user }}'"
+  register: umami_pg_role_check
+  changed_when: false
+
+- name: Créer l'utilisateur PostgreSQL dédié à Umami
+  community.docker.docker_container_exec:
+    container: postgres
+    argv:
+      - psql
+      - -U
+      - "{{ postgres_user }}"
+      - -d
+      - postgres
+      - -c
+      - >-
+        CREATE USER "{{ umami_db_user }}"
+        WITH PASSWORD '{{ umami_db_password }}'
+  when: umami_pg_role_check.stdout | trim != '1'
+  no_log: true
+
+- name: Vérifier si la base PostgreSQL Umami existe
+  community.docker.docker_container_exec:
+    container: postgres
+    argv:
+      - psql
+      - -U
+      - "{{ postgres_user }}"
+      - -d
+      - postgres
+      - -tAc
+      - "SELECT 1 FROM pg_database WHERE datname = '{{ umami_db_name }}'"
+  register: umami_pg_db_check
+  changed_when: false
+
+- name: Créer la base PostgreSQL dédiée à Umami
+  community.docker.docker_container_exec:
+    container: postgres
+    argv:
+      - psql
+      - -U
+      - "{{ postgres_user }}"
+      - -d
+      - postgres
+      - -c
+      - "CREATE DATABASE \"{{ umami_db_name }}\" OWNER \"{{ umami_db_user }}\""
+  when: umami_pg_db_check.stdout | trim != '1'
+
+- name: Créer le dossier pour Umami
+  ansible.builtin.file:
+    path: /opt/docker/umami
+    state: directory
+    mode: '0755'
+    owner: "{{ ansible_user | default('root') }}"
+    group: docker
+
+- name: Copier le fichier docker-compose pour Umami
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: /opt/docker/umami/docker-compose.yml
+    mode: '0600'
+
+- name: Démarrer Umami
+  community.docker.docker_compose_v2:
+    project_src: /opt/docker/umami
+    state: present
+    pull: missing

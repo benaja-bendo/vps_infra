@@ -21,6 +21,18 @@ postgres_db: "appdb"
 minio_root_user: "minioadmin"
 minio_root_password: "changeme"
 
+# ─── Umami (analytics self-hosted, stats.<domain>) ───────────────────────────
+# Base + utilisateur PostgreSQL dédiés, créés automatiquement par le rôle.
+# ⚠️ Utiliser des valeurs sans caractères spéciaux d'URL (le mot de passe est
+# injecté dans DATABASE_URL) — ex: openssl rand -hex 16
+umami_db_password: "changeme"
+# Secret applicatif Umami (signature des sessions) — ex: openssl rand -hex 32
+umami_app_secret: "changeme"
+# Optionnel : surcharger les défauts du rôle (roles/umami/defaults/main.yml)
+# umami_db_name: "umami"
+# umami_db_user: "umami"
+# umami_image: "ghcr.io/umami-software/umami:postgresql-latest"
+
 # ─── MinerU (extraction PDF → MD/JSON) ────────────────────────────────────────
 # Optionnel : le rôle a déjà des valeurs par défaut (roles/mineru/defaults/main.yml).
 # Décommenter pour surcharger.

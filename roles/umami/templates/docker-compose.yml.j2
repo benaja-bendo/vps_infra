@@ -1,0 +1,27 @@
+services:
+  umami:
+    image: {{ umami_image }}
+    container_name: umami
+    restart: unless-stopped
+    environment:
+      # "postgres" = nom du conteneur Postgres sur le réseau db_internal
+      DATABASE_URL: "postgresql://{{ umami_db_user }}:{{ umami_db_password }}@postgres:5432/{{ umami_db_name }}"
+      DATABASE_TYPE: postgresql
+      APP_SECRET: "{{ umami_app_secret }}"
+    networks:
+      - proxy
+      - db_internal
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.umami.rule=Host(`stats.{{ domain }}`)"
+      - "traefik.http.routers.umami.entrypoints=websecure"
+      - "traefik.http.routers.umami.tls.certresolver=myresolver"
+      # Pas de BasicAuth : Umami a sa propre authentification, et /script.js
+      # doit rester accessible publiquement pour le tracking des fronts.
+      - "traefik.http.services.umami.loadbalancer.server.port=3000"
+
+networks:
+  proxy:
+    external: true
+  db_internal:
+    external: true

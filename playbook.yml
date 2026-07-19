@@ -30,3 +30,6 @@
 
     - role: dozzle
       tags: [dozzle]
+
+    - role: umami
+      tags: [umami]

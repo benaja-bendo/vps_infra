@@ -1,0 +1,13 @@
+---
+# ─── Umami (analytics self-hosted, stats.{{ domain }}) ───────────────────────
+# Image officielle, variante PostgreSQL.
+umami_image: "ghcr.io/umami-software/umami:postgresql-latest"
+
+# Base et utilisateur PostgreSQL dédiés (créés de façon idempotente par le rôle
+# dans l'instance Postgres existante du VPS).
+umami_db_name: "umami"
+umami_db_user: "umami"
+
+# Secrets attendus dans group_vars/vps.yml (voir group_vars/vps.example.yml) :
+#   umami_db_password  — mot de passe de l'utilisateur PostgreSQL dédié
+#   umami_app_secret   — APP_SECRET Umami (openssl rand -hex 32)
