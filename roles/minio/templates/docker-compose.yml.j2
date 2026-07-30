@@ -40,7 +40,7 @@ services:
       /usr/bin/mc mb myminio/pdfs || true;
       /usr/bin/mc mb myminio/extractions || true;
       /usr/bin/mc mb myminio/mibeko-documents || true;
-      /usr/bin/mc anonymous set public myminio/mibeko-documents || true;
+      /usr/bin/mc anonymous set none myminio/mibeko-documents || true;
       exit 0;
       "
     networks:

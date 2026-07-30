@@ -7,10 +7,11 @@ domain: "your-domain.com"
 
 # ─── Traefik ─────────────────────────────────────────────────────────────────
 # Email pour les certificats Let's Encrypt
-# Mot de passe u1J*ft&4Rk$&1TT!
 traefik_acme_email: "admin@your-domain.com"
 # Identifiants du dashboard Traefik (générer avec: htpasswd -nb user password)
-traefik_dashboard_users: "admin:$$apr1$$..."
+# ⚠️ Ne jamais écrire le mot de passe en clair ici : seul le hash est attendu,
+#    et uniquement dans group_vars/vps.yml (gitignoré).
+traefik_dashboard_users: "admin:$$apr1$$REMPLACER_PAR_LE_HASH_HTPASSWD"
 
 # ─── PostgreSQL ───────────────────────────────────────────────────────────────
 postgres_user: "pguser"
