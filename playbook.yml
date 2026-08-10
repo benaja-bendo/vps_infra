@@ -25,8 +25,14 @@
     - role: minio
       tags: [minio]
 
-    - role: mineru
-      tags: [mineru]
+    # Désactivé le 10/08/2026 : MINERU_BACKEND=cloud en production (mibeko-python
+    # appelle l'API SaaS mineru.net, pas ce conteneur) et le VPS n'a que 1,9 Go de
+    # RAM — MinerU en réclame ≥ 6 Go, il ne pourrait de toute façon jamais parser
+    # un document ici sans être tué par l'OOM killer. Image + volume de modèles
+    # supprimés (2,85 Go). Ne pas réactiver sans un VPS dimensionné pour, et sans
+    # revérifier MINERU_BACKEND.
+    # - role: mineru
+    #   tags: [mineru]
 
     - role: dozzle
       tags: [dozzle]
