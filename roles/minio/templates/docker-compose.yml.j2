@@ -12,22 +12,27 @@ services:
     ports:
       - "127.0.0.1:9000:9000"
       - "127.0.0.1:9001:9001"
+    # Le réseau `proxy` reste INDISPENSABLE : ce n'est pas Traefik qui l'exige,
+    # ce sont les applications. mibeko-app, mibeko-queue, mibeko-scheduler et
+    # mibeko-python joignent le stockage par `http://minio:9000` sur ce réseau
+    # (vérifié le 13/08/2026). Retirer `proxy` d'ici couperait tout le stockage.
     networks:
       - proxy
-    labels:
-      - "traefik.enable=true"
-      # Console (UI)
-      - "traefik.http.routers.minio-console.rule=Host(`minio.{{ domain }}`)"
-      - "traefik.http.routers.minio-console.entrypoints=websecure"
-      - "traefik.http.routers.minio-console.tls.certresolver=myresolver"
-      - "traefik.http.routers.minio-console.service=minio-console"
-      - "traefik.http.services.minio-console.loadbalancer.server.port=9001"
-      # API (S3)
-      - "traefik.http.routers.minio-api.rule=Host(`s3.{{ domain }}`)"
-      - "traefik.http.routers.minio-api.entrypoints=websecure"
-      - "traefik.http.routers.minio-api.tls.certresolver=myresolver"
-      - "traefik.http.routers.minio-api.service=minio-api"
-      - "traefik.http.services.minio-api.loadbalancer.server.port=9000"
+    # Aucun label Traefik : MinIO n'est plus publié sur l'internet.
+    #
+    # Audit du 13/08/2026 : deux routeurs exposaient `minio.{{ domain }}`
+    # (console, 200) et `s3.{{ domain }}` (API S3), TLS mais SANS middleware
+    # d'authentification — seuls les identifiants racine de MinIO, restés aux
+    # valeurs par défaut du dépôt, protégeaient les 1 065 objets du corpus en
+    # lecture comme en suppression.
+    #
+    # Retrait sans effet sur la production : aucun des 7 dépôts ne référence
+    # `s3.{{ domain }}` ni `minio.{{ domain }}` (le bucket est privé, les URL
+    # signées sont produites sur l'endpoint interne `http://minio:9000`).
+    #
+    # Accès à la console par tunnel SSH (cf. `docs/infra/production.md` § 3) :
+    #   ssh -N -L 9100:127.0.0.1:9000 -L 9101:127.0.0.1:9001 ubuntu@<IP_VPS>
+    #   puis http://localhost:9101
 
   minio-createbuckets:
     image: quay.io/minio/mc

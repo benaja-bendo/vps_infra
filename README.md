@@ -304,6 +304,13 @@ Pour vous connecter à la base de données depuis votre machine locale (Mac/PC) 
 
 Comme PostgreSQL, MinIO n'expose pas ses ports publiquement. Les ports 9000 (API S3) et 9001 (Console) sont accessibles uniquement en local sur le VPS (`127.0.0.1`).
 
+> **Depuis le 13/08/2026 seulement.** Cette phrase était fausse avant cette date : les
+> ports étaient bien liés à `127.0.0.1`, mais Traefik routait par ailleurs
+> `minio.<domain>` et `s3.<domain>` **sans authentification**, en joignant le
+> conteneur par le réseau Docker. Ces routeurs ont été retirés (voir
+> `docs/decisions.md` et l'audit `docs/_archive/2026-08-13-audit-vps-infrastructure.md`).
+> Ne pas les rétablir : le bucket porte l'intégralité du corpus.
+
 ### Procédure
 
 1. **Ouvrez un terminal** sur votre machine locale et démarrez un tunnel SSH :
@@ -324,6 +331,21 @@ Comme PostgreSQL, MinIO n'expose pas ses ports publiquement. Les ports 9000 (API
      ```
 
 4. Pour arrêter le tunnel : `Ctrl+C`.
+
+## Accès local à Portainer
+
+Portainer monte `/var/run/docker.sock` : y accéder équivaut à être **root sur l'hôte
+entier**. Il n'est donc plus routé par Traefik depuis le 13/08/2026 (il répondait
+jusque-là `200` sur l'internet public, protégé par le seul mot de passe applicatif).
+Il n'est pas non plus sur le réseau `proxy` : aucun conteneur applicatif ne peut
+l'atteindre.
+
+```bash
+ssh -N -L 9102:127.0.0.1:9002 ubuntu@185.143.102.169
+```
+
+Puis `http://localhost:9102`. Le port hôte est **9002** et non 9000, ce dernier étant
+déjà pris par l'API S3 de MinIO.
 
 ---
 
@@ -586,6 +608,14 @@ Afin d'assurer le bon fonctionnement de l'application Laravel (Tableau de Bord) 
 1. **Rôle MinIO** (`roles/minio`) :
    - Ajout d'un container éphémère `minio-createbuckets` (utilisant l'image `minio/mc`).
    - Création automatique des buckets au démarrage : `pdfs`, `extractions` et `mibeko-documents`.
-   - Configuration de la politique d'accès publique pour `mibeko-documents` afin que les documents puissent être servis par Laravel si nécessaire.
+   - Le bucket `mibeko-documents` est **privé** (`mc anonymous set none`) : les documents sont servis par Laravel via des URL signées sur l'endpoint interne, jamais en accès anonyme.
+
+> ⚠️ **Ce conteneur `minio-createbuckets` ne fonctionne pas** (constaté le 13/08/2026).
+> Il appelle `mc config host add`, commande **retirée** des versions récentes de `mc` :
+> l'alias n'est jamais configuré. Il affiche pourtant « Bucket created successfully »
+> pour `pdfs` et `extractions`, alors que le disque MinIO ne contient qu'un seul
+> bucket, `mibeko-documents`. Ne pas se fier à sa sortie. Sans conséquence
+> aujourd'hui — aucune application n'utilise `pdfs` ni `extractions` — mais à
+> corriger (`mc alias set`) ou à retirer si on revient sur ce rôle.
 
 > **Note (retrait RabbitMQ)** : le rôle `rabbitmq` et les variables `rabbitmq_*` ont été retirés. L'extraction PDF est désormais traitée de façon synchrone dans les jobs de la file Laravel (`ProcessDocumentExtraction` → MinerU), sans broker de messages.

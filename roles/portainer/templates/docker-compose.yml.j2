@@ -11,18 +11,24 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - portainer_data:/data
       - /opt/docker/portainer/admin_password:/run/secrets/portainer_admin_password:ro
-    networks:
-      - proxy
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.portainer.rule=Host(`portainer.{{ domain }}`)"
-      - "traefik.http.routers.portainer.entrypoints=websecure"
-      - "traefik.http.routers.portainer.tls.certresolver=myresolver"
-      - "traefik.http.services.portainer.loadbalancer.server.port=9000"
+    # Portainer monte le socket Docker : y accéder équivaut à être root sur
+    # l'hôte entier. Il n'est donc plus routé par Traefik, et n'est plus sur le
+    # réseau `proxy` — aucun conteneur applicatif ne doit pouvoir l'atteindre.
+    #
+    # Audit du 13/08/2026 : `portainer.{{ domain }}` répondait 200 sur l'internet
+    # public, sans middleware `authtraefik`, protégé par le seul mot de passe
+    # applicatif — resté à la valeur par défaut du dépôt. Ne jamais rétablir de
+    # route Traefik ici, même derrière BasicAuth : le gain d'accès ne vaut pas
+    # l'exposition d'un service qui donne l'hôte.
+    #
+    # Accès désormais par tunnel SSH uniquement :
+    #   ssh -N -L 9102:127.0.0.1:9002 ubuntu@<IP_VPS>
+    #   puis http://localhost:9102
+    #
+    # Port hôte 9002 (et non 9000, déjà pris par l'API S3 de MinIO) ; port local
+    # 9102 par cohérence avec les tunnels de `docs/infra/production.md` § 3.
+    ports:
+      - "127.0.0.1:9002:9000"
 
 volumes:
   portainer_data:
-
-networks:
-  proxy:
-    external: true
