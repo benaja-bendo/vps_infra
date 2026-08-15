@@ -22,6 +22,26 @@ postgres_db: "appdb"
 minio_root_user: "minioadmin"
 minio_root_password: "changeme"
 
+# ─── Sauvegarde hors site du corpus MinIO ───────────────────────────────────
+# Le rôle reste inerte par défaut. L'activer seulement après avoir créé :
+#   1. un utilisateur MinIO dédié, limité à ListBucket/GetObject ;
+#   2. un conteneur Infomaniak distinct avec versionnage Swift activé ;
+#   3. des identifiants S3 dédiés au conteneur distant.
+corpus_backup_enabled: false
+corpus_backup_timer_enabled: false
+# Mettre temporairement à true pour retirer la commande, la configuration et
+# les unités systemd déployées, sans toucher aux stockages ni aux identités.
+corpus_backup_remove: false
+# corpus_backup_source_access_key: "mibeko-backup-ro"
+# corpus_backup_source_secret_key: "REMPLACER"
+# corpus_backup_offsite_endpoint: "https://s3.pub1.infomaniak.cloud"
+# corpus_backup_offsite_access_key: "REMPLACER"
+# corpus_backup_offsite_secret_key: "REMPLACER"
+# Objet PDF immuable utilisé comme sonde SHA-256 après chaque miroir.
+# corpus_backup_probe_object: "sources/<uuid>/<fichier>.pdf"
+# URL ping optionnelle (par exemple Healthchecks.io), sans slash final.
+# corpus_backup_healthcheck_url: "https://hc-ping.com/<uuid>"
+
 # ─── Umami (analytics self-hosted, stats.<domain>) ───────────────────────────
 # Base + utilisateur PostgreSQL dédiés, créés automatiquement par le rôle.
 # ⚠️ Utiliser des valeurs sans caractères spéciaux d'URL (le mot de passe est

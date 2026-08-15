@@ -139,6 +139,7 @@ vps_infra/
     ├── postgres/            # Base de données PostgreSQL
     ├── adminer/             # Interface web PostgreSQL
     ├── minio/               # Stockage objet compatible S3
+    ├── corpus_backup/       # Sauvegarde MinIO hors site, sans suppression répliquée
     ├── mineru/              # Serveur MinerU (extraction PDF → MD/JSON, CPU)
     ├── dozzle/              # Viewer de logs Docker
     └── umami/               # Analytics self-hosted (stats.<domain>)
@@ -160,6 +161,10 @@ Les variables sensibles sont à placer dans `group_vars/vps.yml` (non versionné
 | `postgres_password` | Mot de passe PostgreSQL | voir Vault |
 | `minio_root_user` | Utilisateur root MinIO | `minioadmin` |
 | `minio_root_password` | Mot de passe root MinIO | voir Vault |
+| `corpus_backup_enabled` | Déploie la commande et les unités de sauvegarde, sans lancer de copie | `false` |
+| `corpus_backup_timer_enabled` | Active le lancement nocturne après validation du premier miroir | `false` |
+| `corpus_backup_source_access_key` | Compte MinIO dédié, limité à la lecture du corpus | voir Vault |
+| `corpus_backup_offsite_endpoint` | Endpoint S3 du conteneur Infomaniak versionné | `https://s3.pub1.infomaniak.cloud` |
 | `umami_db_password` | Mot de passe du user PostgreSQL dédié Umami (sans caractères spéciaux d'URL) | `openssl rand -hex 16` |
 | `umami_app_secret` | `APP_SECRET` Umami (signature des sessions) | `openssl rand -hex 32` |
 
@@ -214,6 +219,7 @@ ansible-playbook playbook.yml --tags portainer
 ansible-playbook playbook.yml --tags postgres
 ansible-playbook playbook.yml --tags adminer
 ansible-playbook playbook.yml --tags minio
+ansible-playbook playbook.yml --tags corpus_backup
 ansible-playbook playbook.yml --tags mineru
 ansible-playbook playbook.yml --tags dozzle
 ansible-playbook playbook.yml --tags umami
@@ -331,6 +337,87 @@ Comme PostgreSQL, MinIO n'expose pas ses ports publiquement. Les ports 9000 (API
      ```
 
 4. Pour arrêter le tunnel : `Ctrl+C`.
+
+## Sauvegarde hors site du corpus MinIO
+
+Le rôle `corpus_backup` copie les objets un par un vers un conteneur Infomaniak
+Object Storage distinct. Il ne construit aucun ZIP et sa consommation mémoire ne
+dépend donc pas de la taille totale du corpus.
+
+La cible est une sauvegarde, pas un miroir destructif : la commande emploie
+`mc mirror --overwrite --retry`, **jamais `--remove`**. Un objet disparu de la
+source reste ainsi récupérable hors site. Le conteneur distant doit en plus avoir
+le versionnage Swift activé avant le premier transfert, afin de conserver les
+versions précédentes d'un objet écrasé.
+
+Préconditions, à satisfaire manuellement avant tout déploiement :
+
+1. créer dans MinIO un compte dédié qui ne possède que `ListBucket`,
+   `GetBucketLocation`, `GetObject` et `GetObjectTagging` sur
+   `mibeko-documents` ; la policy prête à importer est
+   `roles/corpus_backup/files/minio-corpus-backup-readonly-policy.json`, et le
+   rôle refuse le compte racine ;
+2. créer `mibeko-documents-backup` dans un projet Infomaniak distinct du VPS et
+   y activer `X-Versions-Enabled: true` avec l'API Swift ;
+3. générer des identifiants S3 dédiés et renseigner les variables commentées
+   dans `group_vars/vps.example.yml`, uniquement dans le fichier gitignoré
+   `group_vars/vps.yml` ;
+4. choisir un PDF source immuable existant pour
+   `corpus_backup_probe_object` : il est relu sur les deux stockages et comparé
+   au SHA-256 après chaque cycle.
+
+Le premier déploiement garde obligatoirement le timer désactivé :
+
+```yaml
+corpus_backup_enabled: true
+corpus_backup_timer_enabled: false
+```
+
+L'opérateur déploie ensuite le rôle, puis contrôle le transfert depuis le VPS :
+
+```bash
+sudo mibeko-backup-corpus dry-run
+sudo mibeko-backup-corpus run
+sudo mibeko-backup-corpus verify
+```
+
+`verify` échoue si une clé source manque à la cible, si une taille diverge ou si
+la sonde restaurée n'a pas le même SHA-256. Les objets présents uniquement hors
+site sont affichés mais conservés. Ce contrôle de clé/taille ne remplace pas un
+exercice de restauration : avant d'activer le timer, télécharger aussi un PDF
+depuis Infomaniak dans un dossier temporaire et comparer son SHA-256 à la source.
+
+> **Piège de compatibilité Infomaniak.** `mc stat` peut afficher
+> `Anonymous: Enabled` parce que l'API S3 de Swift ne prend pas en charge les
+> bucket policies S3. Ce champ ne fait pas foi. La confidentialité se prouve
+> avec `swift stat` : `Read ACL` et `Write ACL` doivent être vides. Une cible
+> publique porterait notamment `.r:*,.rlistings` dans `Read ACL`.
+
+> Le même type de valeur trompeuse apparaît côté source avec le compte MinIO
+> minimal : faute d'accès aux réglages administratifs du bucket, `mc stat` peut
+> annoncer `Un-versioned`, `Anonymous: Enabled` et `0 object`. `mc du` fait foi
+> pour l'inventaire courant ; le droit `GetObject` se prouve séparément en relisant
+> la sonde SHA-256.
+
+Après ce premier cycle seulement, passer `corpus_backup_timer_enabled` à `true`
+et redéployer le rôle. Le timer est persistant (il rattrape un cycle manqué après
+redémarrage) et s'exécute vers 04h20 avec un léger délai aléatoire :
+
+```bash
+systemctl list-timers mibeko-corpus-backup.timer
+journalctl -u mibeko-corpus-backup.service --since today
+```
+
+Une URL de ping peut être renseignée dans `corpus_backup_healthcheck_url` pour
+signaler les débuts, succès et échecs à un moniteur externe. Désactiver le timer
+n'efface jamais la cible ni ses versions.
+
+Retour arrière du seul déploiement hôte : mettre
+`corpus_backup_enabled: false` et `corpus_backup_remove: true`, puis rejouer le
+tag `corpus_backup`. Le rôle arrête le timer et retire la configuration root-only,
+la commande et les unités `systemd`. Il ne supprime jamais les identités, les
+buckets, les objets ni l'image Docker mise en cache. Remettre ensuite
+`corpus_backup_remove: false` dans les variables.
 
 ## Accès local à Portainer
 

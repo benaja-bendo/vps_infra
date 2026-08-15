@@ -1,0 +1,19 @@
+{
+  "version": "10",
+  "aliases": {
+    "source": {
+      "url": {{ corpus_backup_source_endpoint | to_json }},
+      "accessKey": {{ corpus_backup_source_access_key | to_json }},
+      "secretKey": {{ corpus_backup_source_secret_key | to_json }},
+      "api": "S3v4",
+      "path": "on"
+    },
+    "offsite": {
+      "url": {{ corpus_backup_offsite_endpoint | to_json }},
+      "accessKey": {{ corpus_backup_offsite_access_key | to_json }},
+      "secretKey": {{ corpus_backup_offsite_secret_key | to_json }},
+      "api": "S3v4",
+      "path": "on"
+    }
+  }
+}

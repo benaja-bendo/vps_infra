@@ -1,0 +1,27 @@
+[Unit]
+Description=Sauvegarde hors site du corpus MinIO Mibeko
+Documentation=https://github.com/benaja-bendo/mibeko-dashboard/issues/32
+Wants=network-online.target
+After=network-online.target docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart={{ corpus_backup_command_path }} run
+User=root
+Group=root
+UMask=0077
+Nice=10
+IOSchedulingClass=idle
+TimeoutStartSec=3h
+
+# Le client Docker donne par nature accès au démon root. Ces restrictions
+# réduisent néanmoins ce que le processus hôte peut lire ou modifier.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/run
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,126 @@
+---
+- name: Refuser une installation et un retrait simultanés
+  ansible.builtin.assert:
+    that:
+      - not ((corpus_backup_enabled | bool) and (corpus_backup_remove | bool))
+    fail_msg: >-
+      corpus_backup_enabled et corpus_backup_remove ne peuvent pas être vrais
+      simultanément.
+    quiet: true
+
+- name: Vérifier si le timer de sauvegarde est installé
+  ansible.builtin.stat:
+    path: /etc/systemd/system/mibeko-corpus-backup.timer
+  register: corpus_backup_timer_unit
+  when: corpus_backup_remove | bool
+
+- name: Arrêter le timer avant le retour arrière
+  ansible.builtin.systemd:
+    name: mibeko-corpus-backup.timer
+    enabled: false
+    state: stopped
+  when:
+    - corpus_backup_remove | bool
+    - corpus_backup_timer_unit.stat.exists
+
+- name: Retirer les fichiers hôte de la sauvegarde
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/systemd/system/mibeko-corpus-backup.timer
+    - /etc/systemd/system/mibeko-corpus-backup.service
+    - "{{ corpus_backup_command_path }}"
+    - "{{ corpus_backup_config_dir }}"
+  when: corpus_backup_remove | bool
+  notify: Recharger systemd
+
+- name: Appliquer le retour arrière systemd
+  ansible.builtin.meta: flush_handlers
+  when: corpus_backup_remove | bool
+
+- name: Configurer la sauvegarde hors site du corpus
+  when:
+    - corpus_backup_enabled | bool
+    - not (corpus_backup_remove | bool)
+  block:
+    - name: Valider les paramètres de sauvegarde
+      ansible.builtin.assert:
+        that:
+          - corpus_backup_source_access_key | length > 0
+          - corpus_backup_source_secret_key | length > 0
+          - corpus_backup_source_access_key != minio_root_user
+          - corpus_backup_offsite_endpoint | length > 0
+          - corpus_backup_offsite_endpoint is match('^https://')
+          - corpus_backup_offsite_access_key | length > 0
+          - corpus_backup_offsite_secret_key | length > 0
+          - corpus_backup_offsite_bucket != corpus_backup_source_bucket
+          - corpus_backup_source_bucket is match('^[a-z0-9][a-z0-9.-]+[a-z0-9]$')
+          - corpus_backup_offsite_bucket is match('^[a-z0-9][a-z0-9.-]+[a-z0-9]$')
+          - corpus_backup_probe_object | length == 0 or not corpus_backup_probe_object.startswith('/')
+          - corpus_backup_healthcheck_url | length == 0 or corpus_backup_healthcheck_url is match('^https://')
+          - not (corpus_backup_timer_enabled | bool) or corpus_backup_probe_object | length > 0
+        fail_msg: >-
+          La sauvegarde exige deux comptes dédiés, une cible HTTPS distincte
+          et une sonde immuable avant activation du timer. Le compte source
+          ne peut pas être le compte racine MinIO.
+        quiet: true
+      no_log: true
+
+    - name: Créer le dossier de configuration root-only
+      ansible.builtin.file:
+        path: "{{ corpus_backup_config_dir }}/mc"
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+
+    - name: Installer la configuration des deux stockages
+      ansible.builtin.template:
+        src: mc-config.json.j2
+        dest: "{{ corpus_backup_config_dir }}/mc/config.json"
+        owner: root
+        group: root
+        mode: "0600"
+      no_log: true
+
+    - name: Télécharger l'image immuable du client MinIO
+      community.docker.docker_image:
+        name: "{{ corpus_backup_mc_image }}"
+        source: pull
+
+    - name: Installer la commande de sauvegarde contrôlée
+      ansible.builtin.template:
+        src: mibeko-backup-corpus.sh.j2
+        dest: "{{ corpus_backup_command_path }}"
+        owner: root
+        group: root
+        mode: "0750"
+      no_log: true
+
+    - name: Installer le service systemd de sauvegarde
+      ansible.builtin.template:
+        src: mibeko-corpus-backup.service.j2
+        dest: /etc/systemd/system/mibeko-corpus-backup.service
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Recharger systemd
+
+    - name: Installer le timer systemd de sauvegarde
+      ansible.builtin.template:
+        src: mibeko-corpus-backup.timer.j2
+        dest: /etc/systemd/system/mibeko-corpus-backup.timer
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Recharger systemd
+
+    - name: Appliquer les unités systemd avant leur activation
+      ansible.builtin.meta: flush_handlers
+
+    - name: Activer ou maintenir arrêté le timer de sauvegarde
+      ansible.builtin.systemd:
+        name: mibeko-corpus-backup.timer
+        enabled: "{{ corpus_backup_timer_enabled | bool }}"
+        state: "{{ 'started' if corpus_backup_timer_enabled | bool else 'stopped' }}"

@@ -25,6 +25,13 @@
     - role: minio
       tags: [minio]
 
+    # Sauvegarde objet par objet du corpus vers un stockage hors VPS.
+    # Le rôle est inerte tant que corpus_backup_enabled=false et n'exécute
+    # jamais le miroir au déploiement : le premier transfert reste une
+    # opération humaine contrôlée.
+    - role: corpus_backup
+      tags: [corpus_backup]
+
     # Désactivé le 10/08/2026 : MINERU_BACKEND=cloud en production (mibeko-python
     # appelle l'API SaaS mineru.net, pas ce conteneur) et le VPS n'a que 1,9 Go de
     # RAM — MinerU en réclame ≥ 6 Go, il ne pourrait de toute façon jamais parser

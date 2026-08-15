@@ -1,0 +1,36 @@
+---
+# Le rôle est volontairement inerte tant que l'opérateur n'a pas préparé le
+# stockage distant et explicitement activé son déploiement.
+corpus_backup_enabled: false
+corpus_backup_timer_enabled: false
+# Retour arrière explicite du déploiement hôte. Ne supprime jamais les buckets,
+# les objets, les utilisateurs ou l'image Docker mise en cache.
+corpus_backup_remove: false
+
+corpus_backup_source_endpoint: "http://minio:9000"
+corpus_backup_source_bucket: "mibeko-documents"
+corpus_backup_source_access_key: ""
+corpus_backup_source_secret_key: ""
+
+corpus_backup_offsite_endpoint: ""
+corpus_backup_offsite_bucket: "mibeko-documents-backup"
+corpus_backup_offsite_access_key: ""
+corpus_backup_offsite_secret_key: ""
+
+# Une sonde immuable permet de vérifier le contenu réel d'au moins un objet,
+# `mc diff` ne comparant que les clés et tailles. Elle devient obligatoire au
+# moment d'activer le timer.
+corpus_backup_probe_object: ""
+
+# Image épinglée : une sauvegarde ne doit pas changer de comportement au gré
+# d'un tag `latest`. Mise à jour volontaire après lecture des release notes.
+corpus_backup_mc_image: "minio/mc@sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727"
+corpus_backup_mc_memory: "192m"
+corpus_backup_docker_network: "proxy"
+
+corpus_backup_on_calendar: "*-*-* 04:20:00"
+corpus_backup_randomized_delay_sec: "5m"
+corpus_backup_healthcheck_url: ""
+
+corpus_backup_config_dir: "/opt/docker/corpus-backup"
+corpus_backup_command_path: "/usr/local/sbin/mibeko-backup-corpus"

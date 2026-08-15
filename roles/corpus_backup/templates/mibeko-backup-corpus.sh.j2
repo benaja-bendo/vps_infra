@@ -1,0 +1,117 @@
+#!/bin/sh
+set -eu
+
+MC_IMAGE={{ corpus_backup_mc_image | quote }}
+MC_CONFIG_DIR={{ (corpus_backup_config_dir ~ '/mc') | quote }}
+MC_MEMORY={{ corpus_backup_mc_memory | quote }}
+DOCKER_NETWORK={{ corpus_backup_docker_network | quote }}
+SOURCE_BUCKET={{ corpus_backup_source_bucket | quote }}
+OFFSITE_BUCKET={{ corpus_backup_offsite_bucket | quote }}
+PROBE_OBJECT={{ corpus_backup_probe_object | quote }}
+HEALTHCHECK_URL={{ corpus_backup_healthcheck_url | quote }}
+BACKUP_STARTED=0
+
+run_mc() {
+    docker run --rm \
+        --network "$DOCKER_NETWORK" \
+        --read-only \
+        --cap-drop ALL \
+        --security-opt no-new-privileges \
+        --memory "$MC_MEMORY" \
+        --pids-limit 128 \
+        --tmpfs /tmp:rw,noexec,nosuid,size=64m \
+        --tmpfs /root/.mc:rw,noexec,nosuid,size=1m \
+        --volume "$MC_CONFIG_DIR/config.json:/root/.mc/config.json:ro" \
+        "$MC_IMAGE" "$@"
+}
+
+ping_healthcheck() {
+    suffix="${1:-}"
+    if [ -n "$HEALTHCHECK_URL" ]; then
+        curl --fail --silent --show-error \
+            --max-time 10 --retry 2 \
+            --output /dev/null "${HEALTHCHECK_URL}${suffix}" || true
+    fi
+}
+
+finish() {
+    status=$?
+    trap - EXIT HUP INT TERM
+
+    if [ "$BACKUP_STARTED" -eq 1 ]; then
+        if [ "$status" -eq 0 ]; then
+            ping_healthcheck ""
+        else
+            ping_healthcheck "/fail"
+        fi
+    fi
+
+    exit "$status"
+}
+
+check_endpoints() {
+    # Les buckets doivent préexister : le job n'a pas autorité pour créer une
+    # destination ou choisir implicitement une autre cible.
+    run_mc stat "source/$SOURCE_BUCKET" >/dev/null
+    run_mc stat "offsite/$OFFSITE_BUCKET" >/dev/null
+}
+
+verify_backup() {
+    diff_output="$(run_mc --no-color diff \
+        "source/$SOURCE_BUCKET" "offsite/$OFFSITE_BUCKET")"
+
+    if [ -n "$diff_output" ]; then
+        printf '%s\n' "$diff_output"
+    fi
+
+    # `<` = absent de la cible ; `!` = taille ou date divergente. Les objets
+    # présents uniquement hors site (`>`) sont conservés volontairement : la
+    # sauvegarde est un historique, pas une réplication des suppressions.
+    if printf '%s\n' "$diff_output" | grep -Eq '^[[:space:]]*[<!]'; then
+        echo "ERREUR : la cible ne couvre pas intégralement la source." >&2
+        return 1
+    fi
+
+    run_mc du "source/$SOURCE_BUCKET"
+    run_mc du "offsite/$OFFSITE_BUCKET"
+
+    if [ -n "$PROBE_OBJECT" ]; then
+        source_sha="$(run_mc cat "source/$SOURCE_BUCKET/$PROBE_OBJECT" | sha256sum | cut -c 1-64)"
+        offsite_sha="$(run_mc cat "offsite/$OFFSITE_BUCKET/$PROBE_OBJECT" | sha256sum | cut -c 1-64)"
+
+        if [ "$source_sha" != "$offsite_sha" ]; then
+            echo "ERREUR : la sonde restaurée ne possède pas le SHA-256 source." >&2
+            return 1
+        fi
+
+        echo "Sonde SHA-256 vérifiée : $PROBE_OBJECT"
+    else
+        echo "ATTENTION : aucune sonde SHA-256 configurée." >&2
+    fi
+}
+
+trap finish EXIT HUP INT TERM
+
+case "${1:-}" in
+    dry-run)
+        check_endpoints
+        run_mc mirror --dry-run --overwrite --retry --summary \
+            "source/$SOURCE_BUCKET" "offsite/$OFFSITE_BUCKET"
+        ;;
+    run)
+        BACKUP_STARTED=1
+        ping_healthcheck "/start"
+        check_endpoints
+        run_mc mirror --overwrite --retry --summary \
+            "source/$SOURCE_BUCKET" "offsite/$OFFSITE_BUCKET"
+        verify_backup
+        ;;
+    verify)
+        check_endpoints
+        verify_backup
+        ;;
+    *)
+        echo "Usage : $0 {dry-run|run|verify}" >&2
+        exit 64
+        ;;
+esac

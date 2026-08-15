@@ -1,0 +1,12 @@
+[Unit]
+Description=Planification de la sauvegarde hors site du corpus MinIO Mibeko
+
+[Timer]
+OnCalendar={{ corpus_backup_on_calendar }}
+Persistent=true
+RandomizedDelaySec={{ corpus_backup_randomized_delay_sec }}
+AccuracySec=1m
+Unit=mibeko-corpus-backup.service
+
+[Install]
+WantedBy=timers.target
