@@ -58,6 +58,7 @@
           - corpus_backup_source_bucket is match('^[a-z0-9][a-z0-9.-]+[a-z0-9]$')
           - corpus_backup_offsite_bucket is match('^[a-z0-9][a-z0-9.-]+[a-z0-9]$')
           - corpus_backup_probe_object | length == 0 or not corpus_backup_probe_object.startswith('/')
+          - corpus_backup_pilot_limit | int > 0
           - corpus_backup_healthcheck_url | length == 0 or corpus_backup_healthcheck_url is match('^https://')
           - not (corpus_backup_timer_enabled | bool) or corpus_backup_probe_object | length > 0
         fail_msg: >-

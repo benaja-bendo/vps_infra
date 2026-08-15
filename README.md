@@ -377,9 +377,15 @@ L'opérateur déploie ensuite le rôle, puis contrôle le transfert depuis le VP
 
 ```bash
 sudo mibeko-backup-corpus dry-run
+sudo mibeko-backup-corpus pilot
 sudo mibeko-backup-corpus run
 sudo mibeko-backup-corpus verify
 ```
+
+`pilot` sélectionne de manière déterministe les cinq premières clés source,
+copie uniquement ces objets et compare leur SHA-256 sur les deux stockages. Il
+est rejouable : un objet cible déjà identique n'est pas réécrit. Le miroir
+complet ne doit être lancé qu'après la réussite de ce pilote.
 
 `verify` échoue si une clé source manque à la cible, si une taille diverge ou si
 la sonde restaurée n'a pas le même SHA-256. Les objets présents uniquement hors

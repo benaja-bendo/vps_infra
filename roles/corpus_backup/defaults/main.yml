@@ -21,6 +21,7 @@ corpus_backup_offsite_secret_key: ""
 # `mc diff` ne comparant que les clés et tailles. Elle devient obligatoire au
 # moment d'activer le timer.
 corpus_backup_probe_object: ""
+corpus_backup_pilot_limit: 5
 
 # Image épinglée : une sauvegarde ne doit pas changer de comportement au gré
 # d'un tag `latest`. Mise à jour volontaire après lecture des release notes.

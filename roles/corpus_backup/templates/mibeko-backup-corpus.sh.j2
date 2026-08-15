@@ -8,6 +8,7 @@ DOCKER_NETWORK={{ corpus_backup_docker_network | quote }}
 SOURCE_BUCKET={{ corpus_backup_source_bucket | quote }}
 OFFSITE_BUCKET={{ corpus_backup_offsite_bucket | quote }}
 PROBE_OBJECT={{ corpus_backup_probe_object | quote }}
+PILOT_LIMIT={{ corpus_backup_pilot_limit | quote }}
 HEALTHCHECK_URL={{ corpus_backup_healthcheck_url | quote }}
 BACKUP_STARTED=0
 
@@ -56,6 +57,58 @@ check_endpoints() {
     run_mc stat "offsite/$OFFSITE_BUCKET" >/dev/null
 }
 
+object_sha256() {
+    run_mc cat "$1" | sha256sum | cut -c 1-64
+}
+
+pilot_backup() {
+    pilot_objects="$(
+        run_mc --no-color find "source/$SOURCE_BUCKET" --print "{}" |
+            LC_ALL=C sort |
+            head -n "$PILOT_LIMIT"
+    )"
+
+    if [ -z "$pilot_objects" ]; then
+        echo "ERREUR : aucun objet source accessible pour le pilote." >&2
+        return 1
+    fi
+
+    pilot_count="$(printf '%s\n' "$pilot_objects" | sed '/^$/d' | wc -l | tr -d ' ')"
+
+    printf '%s\n' "$pilot_objects" | while IFS= read -r source_object; do
+        [ -n "$source_object" ] || continue
+
+        relative_object="${source_object#source/$SOURCE_BUCKET/}"
+        if [ "$relative_object" = "$source_object" ]; then
+            echo "ERREUR : chemin source inattendu : $source_object" >&2
+            exit 1
+        fi
+
+        offsite_object="offsite/$OFFSITE_BUCKET/$relative_object"
+        source_sha="$(object_sha256 "$source_object")"
+
+        if run_mc stat "$offsite_object" >/dev/null 2>&1; then
+            offsite_sha="$(object_sha256 "$offsite_object")"
+            if [ "$source_sha" = "$offsite_sha" ]; then
+                echo "Pilote déjà conforme : $relative_object"
+                continue
+            fi
+        fi
+
+        run_mc cp "$source_object" "$offsite_object"
+        offsite_sha="$(object_sha256 "$offsite_object")"
+
+        if [ "$source_sha" != "$offsite_sha" ]; then
+            echo "ERREUR : SHA-256 divergent après copie : $relative_object" >&2
+            exit 1
+        fi
+
+        echo "Pilote copié et vérifié : $relative_object"
+    done
+
+    echo "Pilote vérifié : $pilot_count objet(s) déterministe(s)."
+}
+
 verify_backup() {
     diff_output="$(run_mc --no-color diff \
         "source/$SOURCE_BUCKET" "offsite/$OFFSITE_BUCKET")"
@@ -76,8 +129,8 @@ verify_backup() {
     run_mc du "offsite/$OFFSITE_BUCKET"
 
     if [ -n "$PROBE_OBJECT" ]; then
-        source_sha="$(run_mc cat "source/$SOURCE_BUCKET/$PROBE_OBJECT" | sha256sum | cut -c 1-64)"
-        offsite_sha="$(run_mc cat "offsite/$OFFSITE_BUCKET/$PROBE_OBJECT" | sha256sum | cut -c 1-64)"
+        source_sha="$(object_sha256 "source/$SOURCE_BUCKET/$PROBE_OBJECT")"
+        offsite_sha="$(object_sha256 "offsite/$OFFSITE_BUCKET/$PROBE_OBJECT")"
 
         if [ "$source_sha" != "$offsite_sha" ]; then
             echo "ERREUR : la sonde restaurée ne possède pas le SHA-256 source." >&2
@@ -98,6 +151,10 @@ case "${1:-}" in
         run_mc mirror --dry-run --overwrite --retry --summary \
             "source/$SOURCE_BUCKET" "offsite/$OFFSITE_BUCKET"
         ;;
+    pilot)
+        check_endpoints
+        pilot_backup
+        ;;
     run)
         BACKUP_STARTED=1
         ping_healthcheck "/start"
@@ -111,7 +168,7 @@ case "${1:-}" in
         verify_backup
         ;;
     *)
-        echo "Usage : $0 {dry-run|run|verify}" >&2
+        echo "Usage : $0 {dry-run|pilot|run|verify}" >&2
         exit 64
         ;;
 esac
