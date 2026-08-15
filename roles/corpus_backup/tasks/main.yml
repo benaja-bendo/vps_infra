@@ -124,3 +124,7 @@
         name: mibeko-corpus-backup.timer
         enabled: "{{ corpus_backup_timer_enabled | bool }}"
         state: "{{ 'started' if corpus_backup_timer_enabled | bool else 'stopped' }}"
+      # Lors du tout premier `--check`, le template de l'unité est simulé mais
+      # le fichier n'existe pas encore pour systemd. L'état réel est appliqué
+      # uniquement pendant le déploiement humain qui suit la simulation.
+      when: not ansible_check_mode
