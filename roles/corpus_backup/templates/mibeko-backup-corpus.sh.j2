@@ -10,6 +10,8 @@ OFFSITE_BUCKET={{ corpus_backup_offsite_bucket | quote }}
 PROBE_OBJECT={{ corpus_backup_probe_object | quote }}
 PILOT_LIMIT={{ corpus_backup_pilot_limit | quote }}
 HEALTHCHECK_URL={{ corpus_backup_healthcheck_url | quote }}
+IMMUTABLE_PATTERNS={{ corpus_backup_immutable_patterns | join('\n') | quote }}
+ACKNOWLEDGED_ORPHANS={{ corpus_backup_acknowledged_orphans | join('\n') | quote }}
 BACKUP_STARTED=0
 
 run_mc() {
@@ -109,6 +111,95 @@ pilot_backup() {
     echo "Pilote vérifié : $pilot_count objet(s) déterministe(s)."
 }
 
+# Extrait la clé d'objet d'une ligne `>` de `mc diff`. La ligne porte l'URL
+# résolue de la cible, pas l'alias : la clé commence après le nom du bucket.
+# Une ligne qu'on ne sait pas découper n'est jamais réputée anodine — le
+# garde-fou refuse de conclure sur un format qu'il n'a pas su lire.
+orphan_key() {
+    orphan_path="${1#*> }"
+    orphan_relative="${orphan_path#*/$OFFSITE_BUCKET/}"
+
+    if [ "$orphan_relative" = "$orphan_path" ] || [ -z "$orphan_relative" ]; then
+        return 1
+    fi
+
+    printf '%s\n' "$orphan_relative"
+}
+
+# Motifs `case` séparés par des sauts de ligne : l'appelant a déjà positionné
+# IFS et `set -f`.
+key_matches() {
+    for match_pattern in $2; do
+        case "$1" in
+            $match_pattern) return 0 ;;
+        esac
+    done
+
+    return 1
+}
+
+# Un objet présent uniquement hors site est normal pour un artefact
+# régénérable — export PDF servi puis purgé, extraction remplacée par une
+# réingestion : la sauvegarde est un historique, pas une réplication des
+# suppressions. Sous un préfixe immuable, la lecture s'inverse : le PDF
+# d'origine a disparu de MinIO et seule la copie hors site le porte encore.
+# La sauvegarde a fait son travail, la source non — c'est un incident.
+classify_orphans() {
+    tolerated_orphans=0
+    lost_sources=""
+
+    for orphan_line in $1; do
+        orphan_object="$(orphan_key "$orphan_line" || true)"
+
+        if [ -z "$orphan_object" ]; then
+            echo "ERREUR : ligne de comparaison illisible : $orphan_line" >&2
+            return 1
+        fi
+
+        if key_matches "$orphan_object" "$ACKNOWLEDGED_ORPHANS"; then
+            echo "Disparition source acquittée : $orphan_object"
+            continue
+        fi
+
+        if key_matches "$orphan_object" "$IMMUTABLE_PATTERNS"; then
+            lost_sources="$lost_sources  $orphan_object
+"
+            continue
+        fi
+
+        tolerated_orphans=$((tolerated_orphans + 1))
+    done
+
+    echo "Orphelins hors site tolérés : $tolerated_orphans objet(s) régénérable(s)."
+
+    if [ -n "$lost_sources" ]; then
+        echo "ERREUR : source immuable disparue de MinIO, encore présente hors site :" >&2
+        printf '%s' "$lost_sources" >&2
+        echo "Restaurer l'objet depuis la cible, ou l'instruire puis l'acquitter dans corpus_backup_acknowledged_orphans." >&2
+        return 1
+    fi
+
+    return 0
+}
+
+# Les motifs contiennent des `*` et les clés peuvent en contenir : le
+# découpage se fait sur les sauts de ligne, expansion des chemins coupée.
+check_orphans() {
+    orphan_lines="$(printf '%s\n' "$1" | grep -E '^[[:space:]]*>' || true)"
+    check_orphans_ifs="$IFS"
+    IFS='
+'
+    set -f
+
+    check_orphans_status=0
+    classify_orphans "$orphan_lines" || check_orphans_status=$?
+
+    set +f
+    IFS="$check_orphans_ifs"
+
+    return "$check_orphans_status"
+}
+
 verify_backup() {
     diff_output="$(run_mc --no-color diff \
         "source/$SOURCE_BUCKET" "offsite/$OFFSITE_BUCKET")"
@@ -117,13 +208,13 @@ verify_backup() {
         printf '%s\n' "$diff_output"
     fi
 
-    # `<` = absent de la cible ; `!` = taille ou date divergente. Les objets
-    # présents uniquement hors site (`>`) sont conservés volontairement : la
-    # sauvegarde est un historique, pas une réplication des suppressions.
+    # `<` = absent de la cible ; `!` = taille ou date divergente.
     if printf '%s\n' "$diff_output" | grep -Eq '^[[:space:]]*[<!]'; then
         echo "ERREUR : la cible ne couvre pas intégralement la source." >&2
         return 1
     fi
+
+    check_orphans "$diff_output" || return 1
 
     run_mc du "source/$SOURCE_BUCKET"
     run_mc du "offsite/$OFFSITE_BUCKET"

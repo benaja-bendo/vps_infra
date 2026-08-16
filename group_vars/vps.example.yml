@@ -39,6 +39,15 @@ corpus_backup_remove: false
 # corpus_backup_offsite_secret_key: "REMPLACER"
 # Objet PDF immuable utilisé comme sonde SHA-256 après chaque miroir.
 # corpus_backup_probe_object: "sources/<uuid>/<fichier>.pdf"
+# Préfixes dont la disparition côté source fait échouer `verify` : un PDF
+# d'origine ne se régénère pas. Les valeurs du rôle couvrent déjà les deux
+# racines `source/` du bucket, ne les redéfinir que pour les élargir.
+# corpus_backup_immutable_patterns:
+#   - "domino/legal-documents/*/source/*"
+#   - "domino/official-journals/*/source/*"
+# Disparitions déjà instruites : encore affichées, mais non bloquantes.
+# corpus_backup_acknowledged_orphans:
+#   - "domino/legal-documents/flux/<uuid>/source/pdf/<fichier>.pdf"
 # URL ping optionnelle (par exemple Healthchecks.io), sans slash final.
 # corpus_backup_healthcheck_url: "https://hc-ping.com/<uuid>"
 

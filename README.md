@@ -165,6 +165,8 @@ Les variables sensibles sont à placer dans `group_vars/vps.yml` (non versionné
 | `corpus_backup_timer_enabled` | Active le lancement nocturne après validation du premier miroir | `false` |
 | `corpus_backup_source_access_key` | Compte MinIO dédié, limité à la lecture du corpus | voir Vault |
 | `corpus_backup_offsite_endpoint` | Endpoint S3 du conteneur Infomaniak versionné | `https://s3.pub1.infomaniak.cloud` |
+| `corpus_backup_immutable_patterns` | Préfixes dont la disparition côté source fait échouer `verify` | les deux racines `source/` |
+| `corpus_backup_acknowledged_orphans` | Disparitions instruites, encore affichées mais non bloquantes | `[]` |
 | `umami_db_password` | Mot de passe du user PostgreSQL dédié Umami (sans caractères spéciaux d'URL) | `openssl rand -hex 16` |
 | `umami_app_secret` | `APP_SECRET` Umami (signature des sessions) | `openssl rand -hex 32` |
 
@@ -388,10 +390,29 @@ est rejouable : un objet cible déjà identique n'est pas réécrit. Le miroir
 complet ne doit être lancé qu'après la réussite de ce pilote.
 
 `verify` échoue si une clé source manque à la cible, si une taille diverge ou si
-la sonde restaurée n'a pas le même SHA-256. Les objets présents uniquement hors
-site sont affichés mais conservés. Ce contrôle de clé/taille ne remplace pas un
-exercice de restauration : avant d'activer le timer, télécharger aussi un PDF
-depuis Infomaniak dans un dossier temporaire et comparer son SHA-256 à la source.
+la sonde restaurée n'a pas le même SHA-256. Ce contrôle de clé/taille ne remplace
+pas un exercice de restauration : avant d'activer le timer, télécharger aussi un
+PDF depuis Infomaniak dans un dossier temporaire et comparer son SHA-256 à la
+source.
+
+Les objets présents uniquement hors site sont conservés, mais plus tous égaux :
+
+- sous un préfixe **régénérable** (`exports/`, `extractions/`), l'objet est
+  compté et toléré. Un export PDF servi puis purgé, une extraction remplacée par
+  une réingestion : la source a le droit d'oublier ce que la cible garde ;
+- sous un préfixe **immuable** listé dans `corpus_backup_immutable_patterns`,
+  `verify` échoue. Un PDF d'origine ne se régénère pas : s'il n'existe plus que
+  hors site, ce n'est pas un historique mais une perte côté MinIO, et le silence
+  d'une sauvegarde qui « couvre toute la source » masquerait exactement le
+  sinistre qu'elle doit annoncer ;
+- une ligne de comparaison que le script ne sait pas découper le fait échouer
+  aussi : un format non lu n'est jamais réputé anodin.
+
+Traiter un échec de ce type par la restauration de l'objet depuis la cible.
+Quand la disparition est instruite et légitime, l'inscrire — clé exacte — dans
+`corpus_backup_acknowledged_orphans` : elle reste affichée à chaque cycle mais
+ne le fait plus échouer. Élargir les motifs immuables à la place reviendrait à
+désarmer le garde-fou pour tout un préfixe.
 
 > **Piège de compatibilité Infomaniak.** `mc stat` peut afficher
 > `Anonymous: Enabled` parce que l'API S3 de Swift ne prend pas en charge les

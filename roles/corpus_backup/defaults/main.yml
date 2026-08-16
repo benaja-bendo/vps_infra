@@ -23,6 +23,20 @@ corpus_backup_offsite_secret_key: ""
 corpus_backup_probe_object: ""
 corpus_backup_pilot_limit: 5
 
+# Préfixes dont la disparition côté source est un incident et non une purge
+# normale : les PDF d'origine sont immuables et ne se régénèrent pas. Un objet
+# présent uniquement hors site sous l'un de ces motifs fait échouer `verify`.
+# Motifs `case` du shell, où `*` traverse aussi les `/`. Le reste du bucket
+# (`exports/`, `extractions/`) reste toléré : la copie hors site est un
+# historique, elle conserve volontairement ce que la source a supprimé.
+corpus_backup_immutable_patterns:
+  - "domino/legal-documents/*/source/*"
+  - "domino/official-journals/*/source/*"
+
+# Disparitions déjà instruites par un humain : encore affichées, mais elles ne
+# font plus échouer le cycle. Clés exactes ou motifs, une entrée par ligne.
+corpus_backup_acknowledged_orphans: []
+
 # Image épinglée : une sauvegarde ne doit pas changer de comportement au gré
 # d'un tag `latest`. Mise à jour volontaire après lecture des release notes.
 corpus_backup_mc_image: "minio/mc@sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727"

@@ -61,10 +61,15 @@
           - corpus_backup_pilot_limit | int > 0
           - corpus_backup_healthcheck_url | length == 0 or corpus_backup_healthcheck_url is match('^https://')
           - not (corpus_backup_timer_enabled | bool) or corpus_backup_probe_object | length > 0
+          - not (corpus_backup_timer_enabled | bool) or corpus_backup_immutable_patterns | length > 0
+          - corpus_backup_immutable_patterns | select('search', '[\r\n]') | list | length == 0
+          - corpus_backup_acknowledged_orphans | select('search', '[\r\n]') | list | length == 0
         fail_msg: >-
-          La sauvegarde exige deux comptes dédiés, une cible HTTPS distincte
-          et une sonde immuable avant activation du timer. Le compte source
-          ne peut pas être le compte racine MinIO.
+          La sauvegarde exige deux comptes dédiés, une cible HTTPS distincte,
+          une sonde immuable et au moins un préfixe source protégé avant
+          activation du timer. Le compte source ne peut pas être le compte
+          racine MinIO. Les motifs sont séparés par des sauts de ligne et n'en
+          contiennent donc pas.
         quiet: true
       no_log: true
 
