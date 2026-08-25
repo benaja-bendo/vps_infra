@@ -16,8 +16,11 @@
     - role: postgres
       tags: [postgres]
 
-    - role: adminer
-      tags: [adminer]
+    # Retiré du VPS le 24/08/2026 : Adminer exposait un accès web à la base de
+    # production sur db.mibeko.fr, pour un service qu'un tunnel SSH rend déjà.
+    # Réactiver la ligne ci-dessous le réinstallerait.
+    # - role: adminer
+    #   tags: [adminer]
 
     # - role: cloudbeaver
     #   tags: [cloudbeaver]
