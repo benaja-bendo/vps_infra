@@ -15,6 +15,7 @@ Il provisionne l'**infrastructure** : Traefik (+ TLS Let's Encrypt), PostgreSQL 
 ## Structure et câblage
 - `playbook.yml` (`hosts: vps`, `become: true`) : sa liste `roles:` est le **seul** câblage. Aucun `include_role`, `import_role`, `import_playbook` ni `include_tasks` nulle part — inutile de chercher un point d'entrée caché.
 - Chaque rôle a un tag homonyme (`ansible-playbook playbook.yml --tags <rôle>`), et suit le même patron : créer `/opt/docker/<service>`, y templater un `docker-compose.yml`, lancer `community.docker.docker_compose_v2`.
+- Exception volontaire : `host_guardrails` ne gère aucun Compose. Il installe le timer systemd d'alerte disque et le plafond `SystemMaxUse` de journald (`/etc/systemd/journald.conf.d/mibeko-disk-guard.conf`), et reste séparé de `setup`, dont le tag lancerait un `dist-upgrade` sans rapport.
 - **`roles/cloudbeaver` est du code mort** : le rôle est **commenté** dans `playbook.yml`, donc jamais exécuté (ses fichiers subsistent, et `roles/setup` crée encore le dossier `/opt/docker/cloudbeaver`). Ne pas le décommenter sans décision explicite.
 - Variables : `group_vars/vps.yml` (réel, **gitignoré**) ; `group_vars/vps.example.yml` (modèle versionné) ; `defaults/` seulement dans `traefik`, `mineru`, `umami`.
 
@@ -36,6 +37,7 @@ Le `README.md` présente **Ansible Vault comme recommandé en production**, mais
 - **MinerU n'a aucune authentification** et c'est du calcul lourd : volontairement **non routé par Traefik** (bind `127.0.0.1:{{ mineru_port }}` + réseau interne `mineru_internal`, les consommateurs visent `http://mineru:8000`). Ne jamais lui ajouter un label Traefik.
 - UFW n'ouvre que 22/80/443 ; Postgres, MinIO et MinerU passent par tunnel SSH.
 - Plusieurs images sont en `:latest` (MinIO, Adminer, Dozzle, Portainer, Umami) mais les rôles utilisent `pull: missing` : un rejeu ne les met **pas** à jour silencieusement — en revanche un `docker compose pull` manuel sur le VPS, oui.
+- **Tout service Compose borne ses logs** avec `json-file`, `max-size: 20m`, `max-file: 3`. Conserver l'ancre `x-logging` et l'appliquer à chaque nouveau service, y compris les profils jetables : un seul conteneur sans limite suffit à rouvrir `mibeko-dashboard#30`.
 - Le rôle `mineru` ne reconstruit l'image que si le tag `mineru_version` est absent, et ne re-télécharge les modèles que si le marqueur `/opt/docker/mineru/.models-downloaded` manque. Un bump de version relance un build **long**.
 
 ## Dérives connues du README (le code fait foi)

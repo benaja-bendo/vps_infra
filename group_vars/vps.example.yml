@@ -22,6 +22,19 @@ postgres_db: "appdb"
 minio_root_user: "minioadmin"
 minio_root_password: "changeme"
 
+# ─── Garde-fous de l'hôte ───────────────────────────────────────────────────
+# Déploie un contrôle de l'espace racine toutes les 5 minutes. Utiliser une URL
+# Healthchecks.io dédiée : /fail est appelée dès le seuil d'avertissement, et
+# l'URL normale au retour sous le seuil. Ne pas réutiliser le check du backup.
+# Plafonne aussi journald (/etc/systemd/journald.conf.d) : le vacuum de
+# l'incident du 10/08 était ponctuel, cette limite est permanente.
+host_guardrails_enabled: false
+host_guardrails_remove: false
+host_guardrails_disk_warning_percent: 80
+host_guardrails_disk_critical_percent: 90
+# host_guardrails_disk_healthcheck_url: "https://hc-ping.com/<uuid-dedie>"
+host_guardrails_journald_max_use: "500M"
+
 # ─── Sauvegarde hors site du corpus MinIO ───────────────────────────────────
 # Le rôle reste inerte par défaut. L'activer seulement après avoir créé :
 #   1. un utilisateur MinIO dédié, limité à ListBucket/GetObject ;

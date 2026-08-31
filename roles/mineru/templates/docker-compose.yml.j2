@@ -7,12 +7,19 @@
 # Accès :
 #   - Conteneurs consommateurs : réseau 'mineru_internal' → http://mineru:8000
 #   - Debug / tunnel SSH local : http://127.0.0.1:{{ mineru_port }}
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "20m"
+    max-file: "3"
+
 services:
   mineru:
     image: "{{ mineru_image }}:{{ mineru_version }}"
     container_name: mineru
     platform: linux/amd64
     restart: unless-stopped
+    logging: *default-logging
     environment:
       MINERU_DEVICE_MODE: cpu
       MINERU_MODEL_SOURCE: "{{ mineru_model_source }}"
@@ -44,6 +51,7 @@ services:
   mineru-models:
     image: "{{ mineru_image }}:{{ mineru_version }}"
     platform: linux/amd64
+    logging: *default-logging
     profiles: ["setup"]
     environment:
       MINERU_MODEL_SOURCE: "{{ mineru_model_source }}"

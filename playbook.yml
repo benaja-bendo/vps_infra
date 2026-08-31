@@ -7,6 +7,10 @@
     - role: setup
       tags: [setup]
 
+    # Garde-fous hôte déployables sans rejouer `setup` (qui ferait un dist-upgrade).
+    - role: host_guardrails
+      tags: [host_guardrails]
+
     - role: traefik
       tags: [traefik]
 

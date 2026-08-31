@@ -1,0 +1,9 @@
+---
+host_guardrails_enabled: false
+host_guardrails_remove: false
+
+host_guardrails_disk_warning_percent: 80
+host_guardrails_disk_critical_percent: 90
+host_guardrails_disk_healthcheck_url: ""
+
+host_guardrails_journald_max_use: "500M"

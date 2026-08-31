@@ -1,8 +1,15 @@
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "20m"
+    max-file: "3"
+
 services:
   cloudbeaver:
     image: dbeaver/cloudbeaver:latest
     container_name: cloudbeaver
     restart: unless-stopped
+    logging: *default-logging
     volumes:
       - cloudbeaver_data:/opt/cloudbeaver/workspace
     networks:

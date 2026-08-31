@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+readonly CONFIG_FILE="${MIBEKO_HOST_GUARDRAILS_CONFIG:-/etc/mibeko/host-guardrails.conf}"
+
+if [[ ! -r "${CONFIG_FILE}" ]]; then
+    logger -p daemon.err -t mibeko-disk-guard "configuration absente ou illisible"
+    exit 1
+fi
+
+# shellcheck disable=SC1091
+source "${CONFIG_FILE}"
+
+usage_percent="$(df -P / | awk 'NR == 2 { gsub(/%/, "", $5); print $5 }')"
+if [[ ! "${usage_percent}" =~ ^[0-9]+$ ]]; then
+    logger -p daemon.err -t mibeko-disk-guard "mesure df invalide: ${usage_percent}"
+    exit 1
+fi
+
+state=healthy
+severity=daemon.info
+endpoint="${DISK_HEALTHCHECK_URL}"
+exit_code=0
+
+if (( usage_percent >= DISK_CRITICAL_PERCENT )); then
+    state=critical
+    severity=daemon.crit
+    endpoint="${DISK_HEALTHCHECK_URL}/fail"
+    exit_code=1
+elif (( usage_percent >= DISK_WARNING_PERCENT )); then
+    state=warning
+    severity=daemon.warning
+    endpoint="${DISK_HEALTHCHECK_URL}/fail"
+    exit_code=1
+fi
+
+message="root_fs_usage_percent=${usage_percent} state=${state} warning=${DISK_WARNING_PERCENT} critical=${DISK_CRITICAL_PERCENT} host=$(hostname -f) measured_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+logger -p "${severity}" -t mibeko-disk-guard -- "${message}"
+
+curl --fail --silent --show-error \
+    --retry 3 \
+    --retry-all-errors \
+    --connect-timeout 5 \
+    --max-time 15 \
+    --data-raw "${message}" \
+    "${endpoint}" >/dev/null
+
+exit "${exit_code}"

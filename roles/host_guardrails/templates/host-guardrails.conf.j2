@@ -1,0 +1,4 @@
+# Géré par Ansible (role host_guardrails). Ne pas éditer sur le serveur.
+DISK_WARNING_PERCENT={{ host_guardrails_disk_warning_percent | int }}
+DISK_CRITICAL_PERCENT={{ host_guardrails_disk_critical_percent | int }}
+DISK_HEALTHCHECK_URL={{ host_guardrails_disk_healthcheck_url | quote }}

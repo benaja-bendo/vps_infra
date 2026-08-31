@@ -1,0 +1,9 @@
+---
+- name: Recharger systemd pour les garde-fous hôte
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: Redémarrer systemd-journald
+  ansible.builtin.systemd:
+    name: systemd-journald
+    state: restarted

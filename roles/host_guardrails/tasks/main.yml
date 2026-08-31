@@ -1,0 +1,126 @@
+---
+- name: Valider le mode des garde-fous hôte
+  ansible.builtin.assert:
+    that:
+      - not (host_guardrails_enabled | bool and host_guardrails_remove | bool)
+    fail_msg: >-
+      host_guardrails_enabled et host_guardrails_remove ne peuvent pas être
+      activés simultanément.
+
+- name: Retirer les garde-fous hôte
+  when: host_guardrails_remove | bool
+  block:
+    - name: Arrêter et désactiver le timer d'espace disque
+      ansible.builtin.systemd:
+        name: mibeko-disk-guard.timer
+        enabled: false
+        state: stopped
+      failed_when: false
+
+    - name: Retirer les fichiers des garde-fous hôte
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/systemd/system/mibeko-disk-guard.timer
+        - /etc/systemd/system/mibeko-disk-guard.service
+        - /usr/local/sbin/mibeko-check-disk
+        - /etc/mibeko/host-guardrails.conf
+      notify: Recharger systemd pour les garde-fous hôte
+
+    - name: Retirer le plafond journald
+      ansible.builtin.file:
+        path: /etc/systemd/journald.conf.d/mibeko-disk-guard.conf
+        state: absent
+      notify: Redémarrer systemd-journald
+
+    - name: Appliquer le retrait des unités systemd
+      ansible.builtin.meta: flush_handlers
+
+- name: Déployer les garde-fous hôte
+  when: host_guardrails_enabled | bool
+  block:
+    - name: Valider les seuils et le canal d'alerte disque
+      ansible.builtin.assert:
+        that:
+          - (host_guardrails_disk_warning_percent | int) >= 1
+          - (host_guardrails_disk_warning_percent | int) < 100
+          - (host_guardrails_disk_critical_percent | int) > (host_guardrails_disk_warning_percent | int)
+          - (host_guardrails_disk_critical_percent | int) <= 100
+          - (host_guardrails_disk_healthcheck_url | length) > 0
+          - host_guardrails_disk_healthcheck_url is match('^https://')
+          - not host_guardrails_disk_healthcheck_url.endswith('/')
+          - host_guardrails_journald_max_use is match('^[0-9]+[KMGT]?$')
+        fail_msg: >-
+          Définir des seuils croissants (avertissement < critique), une URL
+          HTTPS Healthchecks.io dédiée sans slash final, et une taille journald
+          en octets ou suffixée K/M/G/T (ex. "500M").
+
+    - name: Créer le dossier de configuration Mibeko
+      ansible.builtin.file:
+        path: /etc/mibeko
+        state: directory
+        owner: root
+        group: root
+        mode: "0750"
+
+    - name: Installer la configuration confidentielle de l'alerte disque
+      ansible.builtin.template:
+        src: host-guardrails.conf.j2
+        dest: /etc/mibeko/host-guardrails.conf
+        owner: root
+        group: root
+        mode: "0600"
+      no_log: true
+
+    - name: Créer le dossier de dérogations journald
+      ansible.builtin.file:
+        path: /etc/systemd/journald.conf.d
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Plafonner l'espace disque de journald
+      ansible.builtin.template:
+        src: journald-mibeko.conf.j2
+        dest: /etc/systemd/journald.conf.d/mibeko-disk-guard.conf
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Redémarrer systemd-journald
+
+    - name: Installer le contrôle d'espace disque
+      ansible.builtin.template:
+        src: mibeko-check-disk.sh.j2
+        dest: /usr/local/sbin/mibeko-check-disk
+        owner: root
+        group: root
+        mode: "0750"
+
+    - name: Installer le service de contrôle d'espace disque
+      ansible.builtin.template:
+        src: mibeko-disk-guard.service.j2
+        dest: /etc/systemd/system/mibeko-disk-guard.service
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Recharger systemd pour les garde-fous hôte
+
+    - name: Installer le timer de contrôle d'espace disque
+      ansible.builtin.template:
+        src: mibeko-disk-guard.timer.j2
+        dest: /etc/systemd/system/mibeko-disk-guard.timer
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Recharger systemd pour les garde-fous hôte
+
+    - name: Appliquer les unités systemd avant activation
+      ansible.builtin.meta: flush_handlers
+
+    - name: Activer le contrôle d'espace disque
+      ansible.builtin.systemd:
+        name: mibeko-disk-guard.timer
+        enabled: true
+        state: started

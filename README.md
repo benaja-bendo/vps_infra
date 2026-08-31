@@ -1,6 +1,6 @@
 # VPS Infrastructure — Ansible
 
-Projet Ansible pour configurer un serveur VPS Ubuntu avec Docker et les services nécessaires (Traefik, Portainer, PostgreSQL, Adminer, MinIO, MinerU, Dozzle, Umami).
+Projet Ansible pour configurer un serveur VPS Ubuntu avec Docker, les garde-fous de l'hôte et les services nécessaires (Traefik, Portainer, PostgreSQL, Adminer, MinIO, MinerU, Dozzle, Umami).
 
 ---
 
@@ -134,6 +134,7 @@ vps_infra/
 ├── playbook.yml             # Playbook principal
 └── roles/
     ├── setup/               # Configuration de base Ubuntu (SSH, Docker, firewall)
+    ├── host_guardrails/     # Alerte d'espace disque, isolée du dist-upgrade de setup
     ├── traefik/             # Reverse proxy + TLS (Let's Encrypt) + middlewares partagés (provider file)
     ├── portainer/           # Interface de gestion Docker
     ├── postgres/            # Base de données PostgreSQL
@@ -161,6 +162,8 @@ Les variables sensibles sont à placer dans `group_vars/vps.yml` (non versionné
 | `postgres_password` | Mot de passe PostgreSQL | voir Vault |
 | `minio_root_user` | Utilisateur root MinIO | `minioadmin` |
 | `minio_root_password` | Mot de passe root MinIO | voir Vault |
+| `host_guardrails_enabled` | Déploie le timer d'alerte disque sans rejouer `setup` | `false` |
+| `host_guardrails_disk_healthcheck_url` | Ping HTTPS dédié à l'espace disque | voir Healthchecks.io |
 | `corpus_backup_enabled` | Déploie la commande et les unités de sauvegarde, sans lancer de copie | `false` |
 | `corpus_backup_timer_enabled` | Active le lancement nocturne après validation du premier miroir | `false` |
 | `corpus_backup_source_access_key` | Compte MinIO dédié, limité à la lecture du corpus | voir Vault |
@@ -216,6 +219,7 @@ ansible-playbook playbook.yml
 
 ```bash
 ansible-playbook playbook.yml --tags setup
+ansible-playbook playbook.yml --tags host_guardrails
 ansible-playbook playbook.yml --tags traefik
 ansible-playbook playbook.yml --tags portainer
 ansible-playbook playbook.yml --tags postgres
@@ -339,6 +343,83 @@ Comme PostgreSQL, MinIO n'expose pas ses ports publiquement. Les ports 9000 (API
      ```
 
 4. Pour arrêter le tunnel : `Ctrl+C`.
+
+## Protection du disque et rotation des logs Docker
+
+Chaque service Docker versionné fixe le pilote `json-file` à **20 Mio par
+fichier et 3 fichiers**. La borne maximale est donc de 60 Mio par conteneur,
+au lieu d'un fichier JSON sans limite. Le réglage est porté par chaque Compose,
+pas par `/etc/docker/daemon.json` : il s'applique quand le conteneur est recréé
+et ne nécessite aucun redémarrage global du daemon Docker.
+
+Les applications (`mibeko-dashboard`, `mibeko-python`, `mibeko-front`,
+`mibeko-site`) appliquent le réglage à leur prochain déploiement CI. Les
+services de ce dépôt l'appliquent au rejeu de leur rôle. Les rôles doivent être
+rejoués séparément : `postgres` retire puis recrée le conteneur et coupe
+brièvement toute la plateforme ; `traefik` coupe brièvement le routage ; `minio`
+coupe brièvement le stockage. Ne jamais les grouper sous une autorisation
+générique.
+
+L'alerte disque est un rôle indépendant de `setup`, car `setup` lance un
+`apt upgrade: dist` sans rapport avec ce garde-fou. Créer un check
+Healthchecks.io dédié, puis renseigner uniquement dans `group_vars/vps.yml` :
+
+```yaml
+host_guardrails_enabled: true
+host_guardrails_remove: false
+host_guardrails_disk_warning_percent: 80
+host_guardrails_disk_critical_percent: 90
+host_guardrails_disk_healthcheck_url: "https://hc-ping.com/<uuid-dedie>"
+host_guardrails_journald_max_use: "500M"
+```
+
+Toutes les cinq minutes, `mibeko-disk-guard.timer` mesure la partition racine.
+Sous 80 %, il envoie un ping normal. À partir de 80 %, puis de 90 %, il journalise
+respectivement `warning` ou `critical`, appelle `/fail` et fait échouer le service
+oneshot. Le même check signale aussi l'absence de ping si le VPS ou le timer
+s'arrête. Ne pas réutiliser l'URL de sauvegarde du corpus : un incident disque ne
+doit pas changer l'état du contrôle de sauvegarde.
+
+Le même rôle dépose aussi une dérogation journald,
+`/etc/systemd/journald.conf.d/mibeko-disk-guard.conf`, qui fixe
+`SystemMaxUse={{ host_guardrails_journald_max_use }}` (défaut `500M`) et
+redémarre `systemd-journald` pour l'appliquer. Le vacuum de l'incident du
+10/08 (`mibeko-dashboard#30`) était ponctuel ; cette limite est permanente et
+survit à un redémarrage du VPS.
+
+Déploiement humain, opération Classe 2 :
+
+```bash
+# Simulation : connexion production, aucune écriture.
+ansible-playbook playbook.yml --tags host_guardrails --check --diff
+
+# Application après revue du diff.
+ansible-playbook playbook.yml --tags host_guardrails
+
+# Vérification — alerte disque.
+systemctl status mibeko-disk-guard.timer --no-pager
+systemctl start mibeko-disk-guard.service
+journalctl -u mibeko-disk-guard.service --since today --no-pager
+
+# Vérification — plafond journald.
+journalctl --disk-usage
+systemctl status systemd-journald --no-pager
+```
+
+Le test réel du canal d'alerte consiste à relever temporairement le seuil
+d'avertissement **au-dessus** de l'usage courant pour le ping sain, puis à le
+placer **au-dessous** de l'usage courant pour provoquer `/fail`; remettre ensuite
+80/90 et rejouer le rôle. Chaque changement est une opération distincte et doit
+être autorisé comme telle.
+
+Retour arrière : mettre `host_guardrails_enabled: false` et
+`host_guardrails_remove: true`, puis rejouer uniquement le tag
+`host_guardrails`. Cela arrête le timer, retire la dérogation journald (retour
+au réglage par défaut de l'image, redémarrage de `systemd-journald` compris) et
+retire les autres fichiers, sans toucher à Docker ni aux données. Pour la
+rotation des logs, revenir sur le Compose du service concerné et le
+redéployer ; les fichiers de logs déjà tournés ne sont jamais supprimés par le
+playbook.
 
 ## Sauvegarde hors site du corpus MinIO
 

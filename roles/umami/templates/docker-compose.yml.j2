@@ -1,8 +1,15 @@
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "20m"
+    max-file: "3"
+
 services:
   umami:
     image: {{ umami_image }}
     container_name: umami
     restart: unless-stopped
+    logging: *default-logging
     environment:
       # "postgres" = nom du conteneur Postgres sur le réseau db_internal
       DATABASE_URL: "postgresql://{{ umami_db_user }}:{{ umami_db_password }}@postgres:5432/{{ umami_db_name }}"
