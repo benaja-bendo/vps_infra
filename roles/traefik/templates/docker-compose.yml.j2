@@ -30,6 +30,15 @@ services:
       # depuis les labels des composes applicatifs via "<nom>@file".
       - "--providers.file.directory=/dynamic"
       - "--providers.file.watch=true"
+      # Journal d'accès (ajouté le 02/09/2026) : avant ce flag, aucune requête
+      # n'était jamais journalisée nulle part pour api/app/mibeko.fr et
+      # python.mibeko.fr — impossible de vérifier a posteriori un pic de trafic
+      # ou du scraping. Va sur stdout, donc capté par `x-logging` (rotation déjà
+      # en place). Attention : le champ RequestPath inclut la query string, donc
+      # les liens à token (vérification email, réinitialisation mot de passe)
+      # y apparaissent en clair — accès déjà restreint au tunnel SSH prod_ro.
+      - "--accesslog=true"
+      - "--accesslog.format=json"
       - "--entrypoints.web.address=:80"
       - "--entrypoints.websecure.address=:443"
       - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
