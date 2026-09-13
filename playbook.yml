@@ -14,8 +14,13 @@
     - role: traefik
       tags: [traefik]
 
-    - role: portainer
-      tags: [portainer]
+    # Retiré du VPS le 13/09/2026 : non utilisé (accès par tunnel SSH seul
+    # depuis le 13/08/2026, jamais ouvert), pour 27 Mo de RAM sur un VPS qui
+    # tourne à 79 Mo de libre, et surtout il monte /var/run/docker.sock —
+    # l'atteindre équivaut à être root sur l'hôte entier. Un service de moins
+    # avec cet accès. Réactiver la ligne ci-dessous le réinstallerait.
+    # - role: portainer
+    #   tags: [portainer]
 
     - role: postgres
       tags: [postgres]
