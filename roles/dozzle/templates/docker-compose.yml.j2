@@ -12,6 +12,7 @@ services:
     logging: *default-logging
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      - dozzle_data:/data
     networks:
       - proxy
     labels:
@@ -22,6 +23,9 @@ services:
       # Sécurité : Utilise le middleware BasicAuth défini dans le service Traefik
       - "traefik.http.routers.dozzle.middlewares=authtraefik@docker"
       - "traefik.http.services.dozzle.loadbalancer.server.port=8080"
+
+volumes:
+  dozzle_data:
 
 networks:
   proxy:
