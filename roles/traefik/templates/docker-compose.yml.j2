@@ -43,7 +43,18 @@ services:
       - "--entrypoints.websecure.address=:443"
       - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
       - "--entrypoints.web.http.redirections.entryPoint.scheme=https"
-      - "--certificatesresolvers.myresolver.acme.tlschallenge=true"
+      # TLS-ALPN-01 → HTTP-01 (CDN Cloudflare, vps_infra#1, docs/decisions.md
+      # 2026-09-20) : le défi TLS-ALPN-01 se joue directement sur le port 443
+      # de l'origine, une connexion spéciale que Let's Encrypt ouvre lui-même —
+      # derrière un proxy qui termine TLS, ce défi n'atteint jamais Traefik et
+      # le renouvellement échouerait silencieusement. HTTP-01 traverse
+      # Cloudflare tant qu'« Always Use HTTPS » reste désactivé côté
+      # Cloudflare (Traefik fait déjà la redirection HTTP→HTTPS ci-dessus).
+      # `acme.json` est conservé : les certificats déjà émis restent valides,
+      # seul le mode de renouvellement change.
+      # - "--certificatesresolvers.myresolver.acme.tlschallenge=true"
+      - "--certificatesresolvers.myresolver.acme.httpchallenge=true"
+      - "--certificatesresolvers.myresolver.acme.httpchallenge.entrypoint=web"
       # Variable Ansible ici :
       - "--certificatesresolvers.myresolver.acme.email={{ traefik_acme_email }}"
       - "--certificatesresolvers.myresolver.acme.storage=/acme.json"
