@@ -765,6 +765,25 @@ labels:
 
 ## Historique des modifications
 
+### [20/09/2026] - Résolveur ACME TLS-ALPN-01 → HTTP-01 (CDN Cloudflare devant mibeko.fr, vps_infra#1)
+
+`roles/traefik/templates/docker-compose.yml.j2` : le résolveur `myresolver`
+passe de `--certificatesresolvers.myresolver.acme.tlschallenge=true` à
+`acme.httpchallenge=true` + `acme.httpchallenge.entrypoint=web`.
+
+**Pourquoi** : TLS-ALPN-01 se joue par une connexion TLS spéciale sur le port
+443 de l'origine — derrière un CDN qui termine TLS (Cloudflare, activé ce
+jour), ce défi n'atteint jamais Traefik et le certificat cesse de se
+renouveler. HTTP-01 traverse le proxy tant que le HTTP en clair passe jusqu'à
+l'origine (« Always Use HTTPS » désactivé côté Cloudflare, Traefik fait déjà
+la redirection). `acme.json` est conservé : les certificats existants restent
+valides, seul le mode de renouvellement change.
+
+La chaîne complète (zone Cloudflare, Cache Rules, purge applicative, chaîne
+d'IP `CF-Connecting-IP`) est documentée et **fait foi** dans
+[`docs/infra/production.md`](../docs/infra/production.md) — ce dépôt ne porte
+que le changement de résolveur, seul point qui touche l'Ansible.
+
 ### [Mise à jour Récente] - Ajout d'Umami (analytics) + middlewares Traefik partagés
 
 1. **Rôle Umami** (`roles/umami`) :
