@@ -354,7 +354,7 @@ et ne nécessite aucun redémarrage global du daemon Docker.
 
 Exception unique : **Traefik**, dont le flux porte le journal d'accès, passe à
 **50 Mio × 10 fichiers, fichiers tournés compressés** (`compress: "true"`,
-depuis le 23/09/2026). À 20m × 3, ce journal ne couvrait qu'environ 36 h. La
+décidé le 23/09/2026, en production depuis le 24/09). À 20m × 3, ce journal ne couvrait qu'environ 36 h. La
 borne dure est de 500 Mio dans le pire cas ; en pratique, la place occupée
 tient au fichier courant plus neuf archives gzip.
 
