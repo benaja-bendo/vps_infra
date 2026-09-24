@@ -352,6 +352,12 @@ au lieu d'un fichier JSON sans limite. Le réglage est porté par chaque Compose
 pas par `/etc/docker/daemon.json` : il s'applique quand le conteneur est recréé
 et ne nécessite aucun redémarrage global du daemon Docker.
 
+Exception unique : **Traefik**, dont le flux porte le journal d'accès, passe à
+**50 Mio × 10 fichiers, fichiers tournés compressés** (`compress: "true"`,
+depuis le 23/09/2026). À 20m × 3, ce journal ne couvrait qu'environ 36 h. La
+borne dure est de 500 Mio dans le pire cas ; en pratique, la place occupée
+tient au fichier courant plus neuf archives gzip.
+
 Les applications (`mibeko-dashboard`, `mibeko-python`, `mibeko-front`,
 `mibeko-site`) appliquent le réglage à leur prochain déploiement CI. Les
 services de ce dépôt l'appliquent au rejeu de leur rôle. Les rôles doivent être

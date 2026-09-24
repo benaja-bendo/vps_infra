@@ -9,7 +9,18 @@ services:
     image: public.ecr.aws/docker/library/traefik:v3.6.8
     container_name: traefik
     restart: unless-stopped
-    logging: *default-logging
+    # Exception assumée à `x-logging` (23/09/2026, docs/decisions.md) : ce flux
+    # porte le journal d'accès, seule trace des requêtes du site. À 20m × 3, il
+    # ne couvrait qu'environ 36 h — trop court pour remonter une vague de sondes
+    # repérée le surlendemain. 50m × 10 donne une dizaine de jours au volume du
+    # 23/09. La borne disque reste dure : 500 Mio dans le pire cas, bien moins
+    # en pratique car les fichiers tournés sont compressés en gzip.
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "10"
+        compress: "true"
     security_opt:
       - no-new-privileges:true
     ports:
@@ -39,6 +50,19 @@ services:
       # y apparaissent en clair — accès déjà restreint au tunnel SSH prod_ro.
       - "--accesslog=true"
       - "--accesslog.format=json"
+      # En-têtes conservés (ajoutés le 23/09/2026) : derrière Cloudflare,
+      # ClientHost ne montre que le relais (162.158.x.x) pour mibeko.fr/www.
+      # L'IP du visiteur est dans `request_Cf-Connecting-Ip`, mais n'est fiable
+      # que si ClientHost appartient aux plages Cloudflare : sur api/app/python,
+      # hors proxy, n'importe quel client peut écrire cet en-tête. Tous les
+      # autres en-têtes restent supprimés — Authorization et Cookie en tête.
+      # `defaultmode=drop` est déjà le défaut de la v3.6.8 (vérifié le 23/09) ;
+      # il est écrit en clair pour ne pas dépendre d'un défaut qu'une montée
+      # de version pourrait changer.
+      - "--accesslog.fields.headers.defaultmode=drop"
+      - "--accesslog.fields.headers.names.Cf-Connecting-Ip=keep"
+      - "--accesslog.fields.headers.names.Cf-Ipcountry=keep"
+      - "--accesslog.fields.headers.names.User-Agent=keep"
       - "--entrypoints.web.address=:80"
       - "--entrypoints.websecure.address=:443"
       - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
